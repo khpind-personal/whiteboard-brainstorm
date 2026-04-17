@@ -70,3 +70,36 @@ test('buildMindNode all elements share a groupId', () => {
   const gid = els[0].groupIds[0];
   for (const el of els) assert.ok(el.groupIds.includes(gid));
 });
+
+import { buildAnnotation } from '../lib/scene.js';
+
+test('buildAnnotation circle kind produces ellipse around target bbox', () => {
+  const target = { id: 't1', x: 100, y: 100, width: 80, height: 40 };
+  const [el] = buildAnnotation({ target, kind: 'circle', color: 'critical' });
+  assert.equal(el.type, 'ellipse');
+  assert.ok(el.x <= target.x);
+  assert.ok(el.x + el.width >= target.x + target.width);
+  assert.equal(el.strokeColor, '#E03131');
+  assert.equal(el.backgroundColor, 'transparent');
+});
+
+test('buildAnnotation arrow kind binds to target', () => {
+  const target = { id: 't1', x: 100, y: 100, width: 80, height: 40 };
+  const els = buildAnnotation({ target, kind: 'arrow', color: 'caution', note: 'check this' });
+  const arrow = els.find(e => e.type === 'arrow');
+  assert.equal(arrow.endBinding.elementId, 't1');
+  assert.equal(arrow.strokeColor, '#F59F00');
+});
+
+test('buildAnnotation underline kind produces line below target', () => {
+  const target = { id: 't1', x: 100, y: 100, width: 80, height: 40 };
+  const [el] = buildAnnotation({ target, kind: 'underline', color: 'validated' });
+  assert.equal(el.type, 'line');
+  assert.ok(el.y >= target.y + target.height);
+  assert.equal(el.strokeColor, '#2F9E44');
+});
+
+test('buildAnnotation rejects unknown color role', () => {
+  const target = { id: 't1', x: 0, y: 0, width: 10, height: 10 };
+  assert.throws(() => buildAnnotation({ target, kind: 'circle', color: 'banana' }));
+});
