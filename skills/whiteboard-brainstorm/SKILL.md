@@ -39,9 +39,11 @@ Modes: `preimpl`, `general`, `mindmap`.
    mkdir -p <vault-root>/_state/<slug>/content
    cp <boardPath> <vault-root>/_state/<slug>/content/latest.excalidraw.json
    ```
-5. Start the server:
+5. Start the server (pass `--vault-root` + `--slug` so the history scrubber can
+   list versioned boards from the vault):
    ```
-   <plugin>/server/start-board-server.sh <vault-root>/_state/<slug>
+   <plugin>/server/start-board-server.sh <vault-root>/_state/<slug> \
+       --vault-root <vault-root> --slug <slug>
    ```
    The script prints JSON with `url` and the session `mode`. Share the URL with
    the user AND the terminal-continue instruction:
