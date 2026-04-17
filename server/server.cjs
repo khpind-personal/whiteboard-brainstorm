@@ -27,8 +27,11 @@ function sweepPort(start = 50000, end = 59999) {
 }
 
 async function main() {
-  const { 'session-dir': sessionDir, 'idle-seconds': idleSec } = parseArgs();
+  const { 'session-dir': sessionDir, 'idle-seconds': idleSec,
+          'vault-root': vaultRootArg, slug: slugArg } = parseArgs();
   if (!sessionDir) { console.error('missing --session-dir'); process.exit(2); }
+  const vaultRoot = vaultRootArg || process.env.WHITEBOARD_VAULT_PATH || '';
+  const slug = slugArg || '';
   const contentDir = path.join(sessionDir, 'content');
   const stateDir   = path.join(sessionDir, 'state');
   fs.mkdirSync(contentDir, { recursive: true });
@@ -118,6 +121,41 @@ async function main() {
                      JSON.stringify(scene, null, 2));
     broadcast('refresh', { path: 'latest.excalidraw.json', source: 'ai' });
     res.json({ ok: true });
+  });
+
+  // History scrubber: list + fetch versioned boards from the vault.
+  // Requires both --vault-root and --slug at startup; otherwise endpoints
+  // return empty / 404.
+  function versionsDir() {
+    if (!vaultRoot || !slug) return null;
+    return path.join(vaultRoot, '20-Canvases', slug);
+  }
+
+  function listVersionFiles() {
+    const dir = versionsDir();
+    if (!dir || !fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter(f => /^board-v(\d+)\.excalidraw\.json$/.test(f))
+      .map(f => {
+        const n = Number(f.match(/v(\d+)/)[1]);
+        const stat = fs.statSync(path.join(dir, f));
+        return { n, filename: f, mtime: stat.mtimeMs };
+      })
+      .sort((a, b) => a.n - b.n);
+  }
+
+  app.get('/versions', (req, res) => {
+    res.json(listVersionFiles());
+  });
+
+  app.get('/versions/:n', (req, res) => {
+    const n = Number(req.params.n);
+    if (!Number.isFinite(n)) return res.status(400).json({ error: 'bad version' });
+    const dir = versionsDir();
+    if (!dir) return res.status(404).json({ error: 'no vault configured' });
+    const file = path.join(dir, `board-v${n}.excalidraw.json`);
+    if (!fs.existsSync(file)) return res.status(404).json({ error: 'version not found' });
+    res.sendFile(file);
   });
 
   const port = await sweepPort();
