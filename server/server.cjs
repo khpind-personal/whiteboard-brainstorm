@@ -74,6 +74,31 @@ async function main() {
     .on('add',    (p) => broadcast('refresh', { path: p }))
     .on('change', (p) => broadcast('refresh', { path: p }));
 
+  app.get('/templates', async (req, res) => {
+    try {
+      const mode = req.query.mode;
+      if (!mode) return res.json([]);
+      const vaultRoot = process.env.WHITEBOARD_VAULT_PATH ||
+                        path.join(process.env.HOME || '', 'Documents/Whiteboard-Brainstorm-Vault');
+      const { listTemplates } = await import('../lib/templates.js');
+      res.json(listTemplates(vaultRoot, mode));
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/init-board', (req, res) => {
+    const { templatePath } = req.body;
+    if (!templatePath) return res.status(400).json({ error: 'templatePath required' });
+    try {
+      const src = path.resolve(templatePath);
+      fs.copyFileSync(src, path.join(contentDir, 'latest.excalidraw.json'));
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   const port = await sweepPort();
   const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };
   fs.writeFileSync(path.join(stateDir, 'server-info'), JSON.stringify(info, null, 2));

@@ -9,9 +9,10 @@ function App() {
   const apiRef = useRef(null);
   const [initialData, setInitialData] = useState(null);
   const pingSeenRef = useRef(new Set());
+  const [picker, setPicker] = useState(null); // null | [{id,name,path}]
 
   useEffect(() => {
-    fetchLatest().then(setInitialData);
+    // SSE refresh wired unconditionally — board may be opened without ?mode=
     const es = new EventSource('/events-stream');
     es.addEventListener('refresh', async () => {
       const scene = await fetchLatest();
@@ -22,6 +23,25 @@ function App() {
         });
       }
     });
+
+    const mode = new URLSearchParams(location.search).get('mode');
+    if (!mode) {
+      fetchLatest().then(setInitialData);
+    } else {
+      (async () => {
+        const latest = await fetchLatest();
+        const hasContent = latest && latest.elements && latest.elements.length > 0;
+        if (hasContent) { setInitialData(latest); return; }
+        const tRes = await fetch('/templates?mode=' + encodeURIComponent(mode));
+        const templates = await tRes.json();
+        if (templates.length > 1) {
+          setPicker(templates);
+        } else {
+          setInitialData(latest || { elements: [], appState: { viewBackgroundColor: '#ffffff' }, files: {} });
+        }
+      })();
+    }
+
     return () => es.close();
   }, []);
 
@@ -68,6 +88,30 @@ function App() {
     });
   }, []);
 
+  async function pickTemplate(t) {
+    await fetch('/init-board', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ templatePath: t.path }),
+    });
+    setPicker(null);
+    // SSE will fire refresh; also fetch directly so state is set now
+    const scene = await fetchLatest();
+    setInitialData(scene);
+  }
+
+  if (picker) {
+    return createElement('div', { className: 'picker-backdrop' },
+      createElement('div', { className: 'picker-modal' },
+        createElement('h2', {}, 'Pick a template'),
+        createElement('div', { className: 'picker-grid' },
+          picker.map(t => createElement('button', {
+            key: t.id, className: 'picker-card',
+            onClick: () => pickTemplate(t),
+          }, t.name))
+        )
+      )
+    );
+  }
   if (!initialData) return createElement('div', { style: { padding: 20 } }, 'Loading\u2026');
   return createElement(Excalidraw, {
     initialData,
