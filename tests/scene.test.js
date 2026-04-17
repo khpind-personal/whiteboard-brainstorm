@@ -39,3 +39,34 @@ test('buildSticky text width fits inside rectangle with padding', () => {
   assert.ok(text.x >= rect.x + 8);
   assert.ok(text.x + text.width <= rect.x + rect.width - 8);
 });
+
+import { buildMindNode } from '../lib/scene.js';
+
+test('buildMindNode emits ellipse + text + arrow when parent given', () => {
+  const parent = { id: 'p1', x: 100, y: 100, width: 80, height: 40 };
+  const els = buildMindNode({ text: 'child', parent, angleRad: 0 });
+  const types = els.map(e => e.type).sort();
+  assert.deepEqual(types, ['arrow', 'ellipse', 'text']);
+});
+
+test('buildMindNode without parent emits ellipse + text only', () => {
+  const els = buildMindNode({ text: 'root' });
+  const types = els.map(e => e.type).sort();
+  assert.deepEqual(types, ['ellipse', 'text']);
+});
+
+test('buildMindNode arrow endpoints bound to parent and child ids', () => {
+  const parent = { id: 'p1', x: 0, y: 0, width: 80, height: 40 };
+  const els = buildMindNode({ text: 'c', parent });
+  const arrow = els.find(e => e.type === 'arrow');
+  const ellipse = els.find(e => e.type === 'ellipse');
+  assert.equal(arrow.startBinding.elementId, 'p1');
+  assert.equal(arrow.endBinding.elementId, ellipse.id);
+});
+
+test('buildMindNode all elements share a groupId', () => {
+  const parent = { id: 'p1', x: 0, y: 0, width: 80, height: 40 };
+  const els = buildMindNode({ text: 'c', parent });
+  const gid = els[0].groupIds[0];
+  for (const el of els) assert.ok(el.groupIds.includes(gid));
+});
