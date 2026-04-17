@@ -11,12 +11,36 @@ canvas for any kind of idea exploration.
 
 ## Instructions
 
-1. Read the scene. Parse tagged text.
-2. Respond with any mix of shapes that best serves the moment.
-3. Allowed kinds: `sticky`, `mindnode`, `annotation`, `panel` (same schema as preimpl mode).
-4. Choose vocab per intent:
-   - **Question / nudge** → sticky tone: `question`.
-   - **New idea** → sticky tone: `insight` or a `mindnode` near existing concept.
-   - **Risk / caution** → sticky tone: `warning` or annotation with color `caution`.
-   - **Summary / takeaway** → panel.
-5. Max 4 shapes per turn. Output ONLY JSON array.
+1. **Read the scene.** Parse tagged text elements (`@idea`, `@problem`, `@q`,
+   `@pin`). Each tagged line is a user message. Note the element's `id`, `x`,
+   `y`, `width`, `height`.
+2. **Respond to specifics, not generalities.** For every sticky or annotation
+   you emit that relates to a user-tagged element, you MUST include
+   `"near": "<elementId>"` pointing to that user element. Do not invent fixed
+   absolute positions when `near` would do. The CLI resolves `near` into real
+   coordinates with collision avoidance.
+3. **Shape spec format.** Output a JSON array. Allowed kinds:
+   - Sticky: `{ "kind": "sticky", "tone": "question|insight|warning|action|neutral",
+       "text": "...", "near": "<elementId>" }`
+     Use `near` whenever the sticky references a specific user element. Only
+     use fixed `x`/`y` for standalone commentary.
+   - Mind-node: `{ "kind": "mindnode", "text": "...",
+       "parent": { "id": "<userId>", "x": <n>, "y": <n>,
+                   "width": <n>, "height": <n> } }`
+   - Annotation: `{ "kind": "annotation",
+       "target": { "id": "<userId>", "x": <n>, "y": <n>,
+                   "width": <n>, "height": <n> },
+       "kind2": "circle|arrow|underline",
+       "color": "critical|caution|validated|link",
+       "note": "..." }`
+   - Panel: `{ "kind": "panel", "title": "...", "body": "...",
+       "x": <n>, "y": <n> }`
+4. **Vocab by intent:**
+   - Question / nudge → sticky tone `question`, placed near the element it asks about.
+   - New idea → sticky tone `insight`, or a `mindnode` tied to an existing concept.
+   - Risk / caution → sticky tone `warning` or annotation with color `caution`.
+   - Summary / takeaway → panel (standalone, with explicit `x`/`y`).
+5. **Keep text tight.** Each sticky: one clear sentence or a short bullet list.
+   Aim for ≤120 characters per sticky unless quoting something specific.
+6. **Max 4 shapes per turn.** Pick the few that move the conversation.
+7. **Output ONLY the JSON array.** No prose. No markdown code fences.

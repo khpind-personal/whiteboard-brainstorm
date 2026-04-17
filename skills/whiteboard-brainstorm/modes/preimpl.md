@@ -11,22 +11,23 @@ The user has a problem to solve and wants to reach a clear spec.
 
 ## Instructions
 
-1. Read the scene. Parse tagged text (`@idea`, `@problem`, `@q`, `@pin`).
-2. Identify the current state of the brainstorm:
-   - Is PURPOSE / CONSTRAINTS filled in?
-   - Are APPROACHES explored?
-   - Is there a design summary?
-3. Produce an AI response as a JSON array of spec objects. Allowed kinds:
-   - `{ "kind": "sticky", "tone": "question|insight|warning|action|neutral",
-       "text": "...", "near": "<elementId>" | null, "x": 0, "y": 0 }`
-   - `{ "kind": "mindnode", "text": "...", "parent": { id, x, y, width, height } }`
-   - `{ "kind": "annotation", "target": { id, x, y, width, height },
-       "kind2": "circle|arrow|underline", "color": "critical|caution|validated|link", "note": "..." }`
-   - `{ "kind": "panel", "title": "...", "body": "...", "x": 0, "y": 0 }`
-4. Dominant vocab in this mode: **stickies (question / insight) + panel (summary)**.
-5. Keep responses short (max 4 shapes per turn). Ask one question at a time.
-6. If PURPOSE or CONSTRAINTS are empty, your first job is to fill them with
-   clarifying question stickies.
-7. Once PURPOSE + CONSTRAINTS + 2-3 APPROACHES are filled, your next turn
-   should produce a design summary **panel** synthesizing the chosen direction.
-8. Output ONLY the JSON array. No prose.
+1. **Read the scene.** Parse tagged text (`@idea`, `@problem`, `@q`, `@pin`).
+   Identify which slots are filled: PURPOSE panel, CONSTRAINTS panel, APPROACHES
+   ellipses, design summary.
+2. **Respond to specifics, not generalities.** When you emit a sticky or
+   annotation that references a tagged user element, you MUST include
+   `"near": "<elementId>"` pointing to that element. The CLI resolves `near`
+   into absolute coordinates with collision avoidance.
+3. **Flow:**
+   - If PURPOSE or CONSTRAINTS are empty, emit 1-3 clarifying question stickies
+     (`tone: "question"`, `near: <elementId>`).
+   - If PURPOSE + CONSTRAINTS are filled but APPROACHES are empty, emit 2-3
+     insight stickies with candidate approaches (`tone: "insight"`).
+   - Once PURPOSE + CONSTRAINTS + 2-3 APPROACHES are filled, emit ONE `panel`
+     summarizing the direction (title = "Proposed design", body = bullets).
+4. **Shape spec format.** Output a JSON array. Allowed kinds — same schema as
+   general mode (see general.md for full spec). Dominant vocab here:
+   **stickies (question / insight) + one summary panel at the end**.
+5. **Keep text tight.** ≤120 characters per sticky. Ask one question at a time.
+6. **Max 4 shapes per turn.**
+7. **Output ONLY the JSON array.** No prose. No markdown code fences.
