@@ -38,6 +38,19 @@ async function main() {
   app.use(express.static(path.join(__dirname, 'public')));
   app.get('/health', (req, res) => res.json({ ok: true }));
 
+  app.post('/state', (req, res) => {
+    const scene = req.body;
+    fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
+                     JSON.stringify(scene, null, 2));
+    res.json({ ok: true });
+  });
+
+  app.post('/events', (req, res) => {
+    const evt = { ...req.body, timestamp: Date.now() };
+    fs.appendFileSync(path.join(stateDir, 'events.jsonl'), JSON.stringify(evt) + '\n');
+    res.json({ ok: true });
+  });
+
   const port = await sweepPort();
   const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };
   fs.writeFileSync(path.join(stateDir, 'server-info'), JSON.stringify(info, null, 2));

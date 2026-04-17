@@ -42,3 +42,46 @@ test('server responds to GET / with HTML page', async () => {
     rmSync(sessionDir, { recursive: true, force: true });
   }
 });
+
+test('POST /state writes content/latest.excalidraw.json', async () => {
+  const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-state-'));
+  const child = bootServer(sessionDir);
+  try {
+    await wait(1200);
+    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const scene = { type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} };
+    const res = await fetch(info.url + '/state', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(scene),
+    });
+    assert.equal(res.status, 200);
+    const stored = JSON.parse(readFileSync(join(sessionDir, 'content', 'latest.excalidraw.json'), 'utf8'));
+    assert.equal(stored.type, 'excalidraw');
+  } finally {
+    child.kill('SIGTERM');
+    rmSync(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test('POST /events appends to state/events.jsonl', async () => {
+  const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-evt-'));
+  const child = bootServer(sessionDir);
+  try {
+    await wait(1200);
+    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    await fetch(info.url + '/events', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'ping', note: 'hello' }),
+    });
+    const events = readFileSync(join(sessionDir, 'state', 'events.jsonl'), 'utf8').trim().split('\n');
+    assert.equal(events.length, 1);
+    const evt = JSON.parse(events[0]);
+    assert.equal(evt.type, 'ping');
+    assert.equal(evt.note, 'hello');
+    assert.ok(evt.timestamp > 0);
+  } finally {
+    await new Promise(resolve => { child.on('exit', resolve); child.kill('SIGTERM'); });
+    rmSync(sessionDir, { recursive: true, force: true });
+  }
+});
