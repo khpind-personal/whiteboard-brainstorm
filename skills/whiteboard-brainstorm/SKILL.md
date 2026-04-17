@@ -43,8 +43,9 @@ Modes: `preimpl`, `general`, `mindmap`.
    ```
    <plugin>/server/start-board-server.sh <vault-root>/_state/<slug>
    ```
-   The script prints JSON with `url`. Share the URL with the user:
-   "Canvas live at <url>. Draw freely. Tag text with @idea / @problem / @q.
+   The script prints JSON with `url` and the session `mode`. Share the URL with
+   the user:
+   "Canvas live at <url>?mode=<mode>. Draw freely. Tag text with @idea / @problem / @q.
    Click @ping when you want me to respond."
 
 ## Turn loop (each user turn)
@@ -54,6 +55,12 @@ Modes: `preimpl`, `general`, `mindmap`.
    latest board.
 2. **Read events:** `cat <session>/state/events.jsonl` (if empty and the user
    just typed in terminal, that's fine; treat their text as the ping message).
+
+   **Note on trigger sources.** The user can click the `@ping` button OR place a
+   text element on the canvas containing `@ping`. Both produce a `ping` event in
+   `events.jsonl`. Events with `source: 'drawn-shape'` were triggered by a drawn
+   text element; check `elementId` to see which one.
+
 3. **Read the latest scene:** `cat <session>/content/latest.excalidraw.json`.
 4. **Parse tags:**
    ```
@@ -121,3 +128,12 @@ If user invokes `/whiteboard-brainstorm resume <slug>`:
 - Scene corrupted: `wbb validate` exits non-zero → serve previous version, log to `state/edit-log.jsonl`.
 - Port conflict: server auto-sweeps range `50000-59999`.
 - Browser closed: harmless. Next turn pushes new scene; reconnect fetches latest.
+
+## Export a session to PNG
+
+At any time during or after a session:
+
+    node <plugin>/bin/wbb.js export-png <vault-root> <slug> [out-path]
+
+Default output path: `<vault>/20-Canvases/<slug>/latest.png`. Requires Playwright
+chromium installed (`npx playwright install chromium`).

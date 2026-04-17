@@ -65,6 +65,20 @@ Tags are case-insensitive. Put them at the start of a text element's line:
 - `@rewrite` (on an AI element) — ask Claude to redo that shape
 - `@ping` — equivalent to clicking the ping button
 
+## Triggers
+
+Two ways to ask the AI to respond:
+
+- **Button** — click the `@ping` button in the lower-right of the canvas.
+- **Drawn shape** — write `@ping` as the first line of any text element. The
+  browser auto-fires a ping event the first time that element appears.
+
+## Templates
+
+Each mode has a seed template. If you drop additional `.excalidraw.json` files
+into `<vault>/30-Templates/<mode>/`, a template picker appears at session start
+to let you choose.
+
 ## Palette
 
 Sticky fills (WCAG AAA against `#1e1e1e` text):
@@ -89,6 +103,7 @@ npm run test:e2e            # Playwright (requires `npx playwright install`)
 
 ## Roadmap
 
-- v0.1: all 3 modes, minimal templates, PNG export stub.
-- v0.2: real PNG export (Playwright-based), drawn `@ping` shape detection,
-  multi-template picker UI.
+- **v0.1** ✅ all 3 modes, minimal templates, PNG export stub.
+- **v0.2** ✅ real PNG export (Playwright), drawn `@ping` shape detection,
+  multi-template picker UI, fixed `boundElements` bidirectional binding.
+- **v0.3** — planned: `@rewrite` on AI elements, canvas history scrubber.
