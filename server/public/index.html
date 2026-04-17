@@ -11,8 +11,24 @@
       background: #FFEB9C; color: #1e1e1e; border: 1.5px solid #1e1e1e;
       border-radius: 6px; padding: 10px 16px; font: 600 14px/1 system-ui;
       cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
     }
     .ping-btn:hover { filter: brightness(0.96); }
+    .ping-btn[disabled] { cursor: progress; opacity: 0.9; }
+    .ping-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #1e1e1e; display: inline-block;
+      opacity: 0.25;
+      transition: opacity 120ms ease;
+    }
+    .ping-btn.thinking .ping-dot {
+      opacity: 1;
+      animation: ping-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes ping-pulse {
+      0%, 100% { transform: scale(0.6); opacity: 0.35; }
+      50%      { transform: scale(1.15); opacity: 1;    }
+    }
     .picker-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4);
       display: flex; align-items: center; justify-content: center; z-index: 100;
@@ -35,7 +51,10 @@
 </head>
 <body>
   <div id="root"></div>
-  <button id="ping" class="ping-btn">@ping</button>
+  <button id="ping" class="ping-btn" aria-label="Ping the AI">
+    <span class="ping-dot" aria-hidden="true"></span>
+    <span class="ping-label">@ping</span>
+  </button>
   <script src="vendor/react.development.js"></script>
   <script src="vendor/react-dom.development.js"></script>
   <script src="vendor/excalidraw.development.js"></script>

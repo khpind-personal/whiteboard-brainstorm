@@ -34,6 +34,8 @@ function App() {
           },
         });
       }
+      // Fan the event out to listeners (ping-thinking indicator, etc.)
+      window.dispatchEvent(new CustomEvent('wbb-scene-refresh'));
     });
 
     const mode = new URLSearchParams(location.search).get('mode');
@@ -88,9 +90,14 @@ function App() {
     for (const id of seen) if (!currentIds.has(id)) seen.delete(id);
   }
 
+  // Shared "thinking" state: ping handler enters it; SSE refresh exits it.
+  const thinkingRef = useRef(false);
+  const thinkingTimeoutRef = useRef(null);
+
   useEffect(() => {
     const btn = document.getElementById('ping');
     btn.addEventListener('click', async () => {
+      if (thinkingRef.current) return; // already waiting on AI
       // Commit any in-progress text edit before posting so it isn't lost
       if (document.activeElement && typeof document.activeElement.blur === 'function') {
         document.activeElement.blur();
@@ -104,9 +111,48 @@ function App() {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'ping', selectedIds: selected }),
       });
-      flashPingSent(btn);
+      enterThinking(btn);
     });
   }, []);
+
+  // Hook into the same SSE listener registered above — when any refresh
+  // arrives while we're in thinking state, treat it as AI response and exit.
+  useEffect(() => {
+    function onRefresh() {
+      if (thinkingRef.current) exitThinking();
+    }
+    window.addEventListener('wbb-scene-refresh', onRefresh);
+    return () => window.removeEventListener('wbb-scene-refresh', onRefresh);
+  }, []);
+
+  function enterThinking(btn) {
+    thinkingRef.current = true;
+    btn.classList.add('thinking');
+    btn.disabled = true;
+    const label = btn.querySelector('.ping-label');
+    if (label) label.textContent = 'Thinking\u2026';
+    // Safety timeout: if no AI response in 90s, reset so user can try again.
+    if (thinkingTimeoutRef.current) clearTimeout(thinkingTimeoutRef.current);
+    thinkingTimeoutRef.current = setTimeout(() => {
+      exitThinking(true);
+    }, 90_000);
+  }
+
+  function exitThinking(timedOut = false) {
+    thinkingRef.current = false;
+    if (thinkingTimeoutRef.current) {
+      clearTimeout(thinkingTimeoutRef.current);
+      thinkingTimeoutRef.current = null;
+    }
+    const btn = document.getElementById('ping');
+    if (!btn) return;
+    btn.classList.remove('thinking');
+    btn.disabled = false;
+    const label = btn.querySelector('.ping-label');
+    if (!label) return;
+    label.textContent = timedOut ? 'Still waiting\u2026' : '\u2713 Done';
+    setTimeout(() => { label.textContent = '@ping'; }, 1800);
+  }
 
   async function pickTemplate(t) {
     await fetch('/init-board', {
@@ -145,12 +191,15 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+// Legacy helper — kept for reference; superseded by enterThinking/exitThinking
+// which provide a pulsing dot while the AI is composing its reply.
 function flashPingSent(btn) {
-  const orig = btn.textContent;
-  btn.textContent = 'Sent \u00b7 check terminal';
+  const label = btn.querySelector('.ping-label') || btn;
+  const orig = label.textContent;
+  label.textContent = 'Sent \u00b7 check terminal';
   btn.disabled = true;
   setTimeout(() => {
-    btn.textContent = orig;
+    label.textContent = orig;
     btn.disabled = false;
   }, 2000);
 }
