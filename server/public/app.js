@@ -9,6 +9,7 @@ function App() {
   const apiRef = useRef(null);
   const [initialData, setInitialData] = useState(null);
   const pingSeenRef = useRef(new Set());
+  const pinSeenRef = useRef(new Set());
   const [picker, setPicker] = useState(null); // null | [{id,name,path}]
 
   useEffect(() => {
@@ -88,6 +89,24 @@ function App() {
     }
     // drop ids for elements that no longer exist so re-adding re-triggers
     for (const id of seen) if (!currentIds.has(id)) seen.delete(id);
+
+    // drawn-pin detection: mirror of drawn-ping but for @pin elements
+    const pinSeen = pinSeenRef.current;
+    const pinCurrent = new Set();
+    for (const el of elements) {
+      if (el.type !== 'text' || typeof el.text !== 'string') continue;
+      if (!/^@pin\b/im.test(el.text)) continue;
+      pinCurrent.add(el.id);
+      if (!pinSeen.has(el.id)) {
+        pinSeen.add(el.id);
+        fetch('/events', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'pin', source: 'drawn-shape', elementId: el.id,
+                                  text: el.text }),
+        });
+      }
+    }
+    for (const id of pinSeen) if (!pinCurrent.has(id)) pinSeen.delete(id);
   }
 
   // Shared "thinking" state: ping handler enters it; SSE refresh exits it.
