@@ -1,0 +1,21 @@
+{
+  "name": "whiteboard-brainstorm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.0.0" },
+  "bin": { "wbb": "bin/wbb.js" },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js",
+    "test:e2e": "playwright test tests/e2e",
+    "test:all": "npm run test && npm run test:integration && npm run test:e2e"
+  },
+  "dependencies": {
+    "express": "4.19.2",
+    "chokidar": "3.6.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.45.0"
+  }
+}

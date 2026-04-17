@@ -1,0 +1,7 @@
+{
+  "name": "whiteboard-brainstorm",
+  "version": "0.1.0",
+  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas with Claude.",
+  "skills": ["skills/whiteboard-brainstorm"],
+  "bin": { "wbb": "bin/wbb.js" }
+}

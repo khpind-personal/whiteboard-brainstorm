@@ -1,0 +1,7 @@
+node_modules/
+.superpowers/
+_state/
+*.log
+test-results/
+playwright-report/
+tests/fixtures/tmp/
