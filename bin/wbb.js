@@ -23,6 +23,7 @@ wbb <subcommand> [args]
   new-board <vault> <mode> <template> <topic>
   moc-append <vault> <slug> <mode> <turns> <topic>
   write-version <vault> <slug> <turn> <scene-file>
+  compact <vault> <slug>   archive board versions older than the latest 10
 `);
 }
 
@@ -104,6 +105,24 @@ try {
       const scene = JSON.parse(readFileSync(sceneFile, 'utf8'));
       const path  = writeVersion({ vaultRoot: vault, slug, turn: Number(turn), scene });
       process.stdout.write(path);
+      break;
+    }
+    case 'compact': {
+      const [vault, slug] = rest;
+      const { readdirSync, renameSync, mkdirSync, copyFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const dir = join(vault, '20-Canvases', slug);
+      const arch = join(dir, '.archive');
+      mkdirSync(arch, { recursive: true });
+      const versions = readdirSync(dir)
+        .filter(f => /^board-v\d+\.excalidraw\.json$/.test(f))
+        .sort((a, b) => Number(b.match(/v(\d+)/)[1]) - Number(a.match(/v(\d+)/)[1]));
+      if (versions.length <= 10) break;
+      const latest = versions[0];
+      const latestNum = Number(latest.match(/v(\d+)/)[1]);
+      copyFileSync(join(dir, latest), join(dir, `board-compacted-v${latestNum}.excalidraw.json`));
+      for (const v of versions.slice(10)) renameSync(join(dir, v), join(arch, v));
+      process.stdout.write(`compacted ${versions.length - 10} versions to .archive\n`);
       break;
     }
     default:
