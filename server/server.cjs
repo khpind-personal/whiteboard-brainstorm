@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
+const chokidar = require('chokidar');
 
 function parseArgs() {
   const args = {};
@@ -50,6 +51,27 @@ async function main() {
     fs.appendFileSync(path.join(stateDir, 'events.jsonl'), JSON.stringify(evt) + '\n');
     res.json({ ok: true });
   });
+
+  const sseClients = new Set();
+  app.get('/events-stream', (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    res.write(': connected\n\n');
+    sseClients.add(res);
+    req.on('close', () => sseClients.delete(res));
+  });
+
+  function broadcast(event, data) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const c of sseClients) try { c.write(msg); } catch (_) {}
+  }
+
+  chokidar.watch(contentDir, { ignoreInitial: true })
+    .on('add',    (p) => broadcast('refresh', { path: p }))
+    .on('change', (p) => broadcast('refresh', { path: p }));
 
   const port = await sweepPort();
   const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };

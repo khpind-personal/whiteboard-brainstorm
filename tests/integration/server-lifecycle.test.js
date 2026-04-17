@@ -85,3 +85,36 @@ test('POST /events appends to state/events.jsonl', async () => {
     rmSync(sessionDir, { recursive: true, force: true });
   }
 });
+
+test('SSE /events-stream pushes refresh when content/latest changes', async () => {
+  const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-sse-'));
+  const child = bootServer(sessionDir);
+  try {
+    await wait(1200);
+    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const res = await fetch(info.url + '/events-stream');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+
+    // touch the file
+    const contentPath = join(sessionDir, 'content', 'latest.excalidraw.json');
+    import('node:fs').then(fs => {
+      fs.writeFileSync(contentPath, JSON.stringify({
+        type: 'excalidraw', version: 2, elements: [], appState: {}, files: {},
+      }));
+    });
+
+    let buf = '';
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const { value } = await reader.read();
+      if (value) buf += decoder.decode(value);
+      if (buf.includes('event: refresh')) break;
+    }
+    assert.match(buf, /event: refresh/);
+    reader.cancel();
+  } finally {
+    await new Promise(resolve => { child.on('exit', resolve); child.kill('SIGTERM'); });
+    rmSync(sessionDir, { recursive: true, force: true });
+  }
+});
