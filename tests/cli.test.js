@@ -48,3 +48,15 @@ test('wbb compact moves boards older than the latest 10 to .archive', () => {
   const remaining = readdirSync(dir).filter(f => f.startsWith('board-v'));
   assert.ok(remaining.length <= 11); // keep ~10 + the compact snapshot
 });
+
+test('wbb list-templates returns JSON array of templates for a mode', () => {
+  const vault = mkdtempSync(join(tmpdir(), 'wbb-lt-cli-'));
+  run(['vault-init', vault]);
+  const dir = join(vault, '30-Templates/preimpl');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'a.excalidraw.json'), '{}');
+  writeFileSync(join(dir, 'b.excalidraw.json'), '{}');
+  const out = JSON.parse(run(['list-templates', vault, 'preimpl']));
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map(t => t.id).sort(), ['a', 'b']);
+});

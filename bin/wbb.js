@@ -24,6 +24,8 @@ wbb <subcommand> [args]
   moc-append <vault> <slug> <mode> <turns> <topic>
   write-version <vault> <slug> <turn> <scene-file>
   compact <vault> <slug>   archive board versions older than the latest 10
+  list-templates <vault> <mode>     list templates available for a mode
+  export-png <vault> <slug> [out]   render the latest board to PNG (requires V5 lib/export.js)
 `);
 }
 
@@ -123,6 +125,19 @@ try {
       copyFileSync(join(dir, latest), join(dir, `board-compacted-v${latestNum}.excalidraw.json`));
       for (const v of versions.slice(10)) renameSync(join(dir, v), join(arch, v));
       process.stdout.write(`compacted ${versions.length - 10} versions to .archive\n`);
+      break;
+    }
+    case 'list-templates': {
+      const [vault, mode] = rest;
+      const { listTemplates } = await import('../lib/templates.js');
+      process.stdout.write(JSON.stringify(listTemplates(vault, mode), null, 2));
+      break;
+    }
+    case 'export-png': {
+      const [vault, slug, outArg] = rest;
+      const { exportPng } = await import('../lib/export.js');
+      const outPath = await exportPng({ vaultRoot: vault, slug, outPath: outArg });
+      process.stdout.write(outPath);
       break;
     }
     default:
