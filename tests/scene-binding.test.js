@@ -10,12 +10,16 @@ test('buildSticky: rectangle.boundElements contains the text element id', () => 
   assert.equal(text.containerId, rect.id);
 });
 
-test('buildPanel: rectangle.boundElements contains both title and body text ids', () => {
+test('buildPanel: rectangle does NOT bind its text children (avoids Excalidraw multi-bind render bug)', () => {
+  // Panels use free-floating text inside the rect instead of container binding
+  // because Excalidraw only supports a single bound text per container and a
+  // second entry in boundElements renders invisible.
   const els = buildPanel({ title: 'T', body: 'B' });
   const [rect, titleEl, bodyEl] = els;
-  const ids = rect.boundElements.map(b => b.id);
-  assert.ok(ids.includes(titleEl.id));
-  assert.ok(ids.includes(bodyEl.id));
+  assert.ok(Array.isArray(rect.boundElements));
+  assert.equal(rect.boundElements.length, 0);
+  assert.equal(titleEl.containerId, undefined);
+  assert.equal(bodyEl.containerId, undefined);
 });
 
 test('buildMindNode: ellipse.boundElements contains the text id', () => {

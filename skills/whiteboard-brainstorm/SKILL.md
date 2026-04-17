@@ -73,9 +73,11 @@ Modes: `preimpl`, `general`, `mindmap`.
    Substitute `{user_scene}` and `{events}` with the content from steps 2–3.
 6. **Produce a response spec** (JSON array of shape specs — see mode file for
    allowed kinds). Max 4 shapes per turn.
-7. **Build AI elements:**
+7. **Build AI elements.** Pass the user scene so `near: <elId>` specs are
+   placed next to their referenced element with collision avoidance:
    ```
-   echo '<spec-json>' | node <plugin>/bin/wbb.js build-scene > /tmp/ai-elements.json
+   echo '<spec-json>' | node <plugin>/bin/wbb.js build-scene \
+       --scene <session>/content/latest.excalidraw.json > /tmp/ai-elements.json
    ```
 8. **Merge into scene:**
    ```
@@ -99,6 +101,17 @@ Modes: `preimpl`, `general`, `mindmap`.
 11. **Reply in terminal** with a one-line summary of the shapes you pushed.
     Remind the user the URL is still live and to ping again when ready for the
     next turn. Do NOT auto-loop — wait for the next terminal turn from the user.
+
+### Auto-poll option (dynamic loop)
+
+If the user invoked the skill via `/loop /whiteboard-brainstorm <mode> [topic]`
+(dynamic mode), you may call `ScheduleWakeup` at the end of each turn with
+`delaySeconds: 60` to poll `events.jsonl` for new pings without requiring the
+user to press Enter. On wake: read events; if new ping, run the turn loop; if
+not, reschedule. Keep polling until the user stops the loop.
+
+Otherwise (no `/loop` wrapper), wait for the user to return to terminal and
+press Enter to trigger the next turn.
 
 ## End of session
 

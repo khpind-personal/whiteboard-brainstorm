@@ -5,12 +5,16 @@ import { buildSticky } from '../lib/scene.js';
 import { validateElement } from '../lib/schema.js';
 import { STICKY_PALETTE, TEXT_COLOR } from '../lib/constants.js';
 
-test('buildSticky produces rectangle + text pair with matching groupId', () => {
+test('buildSticky produces rectangle + container-bound text (text has no groupIds to survive ungroup)', () => {
   const [rect, text] = buildSticky({ tone: 'question', text: 'need auth?', x: 50, y: 50 });
   assert.equal(rect.type, 'rectangle');
   assert.equal(text.type, 'text');
-  assert.deepEqual(rect.groupIds, text.groupIds);
+  // rect is grouped; text is bound via containerId and has NO groupIds
+  // so user can ungroup the rect without orphaning the text into Excalidraw
+  // invariant errors.
   assert.equal(rect.groupIds.length, 1);
+  assert.equal(text.groupIds.length, 0);
+  assert.equal(text.containerId, rect.id);
 });
 
 test('buildSticky assigns palette fill matching tone', () => {
@@ -64,11 +68,17 @@ test('buildMindNode arrow endpoints bound to parent and child ids', () => {
   assert.equal(arrow.endBinding.elementId, ellipse.id);
 });
 
-test('buildMindNode all elements share a groupId', () => {
+test('buildMindNode ellipse + arrow share a groupId; text is container-bound', () => {
   const parent = { id: 'p1', x: 0, y: 0, width: 80, height: 40 };
   const els = buildMindNode({ text: 'c', parent });
-  const gid = els[0].groupIds[0];
-  for (const el of els) assert.ok(el.groupIds.includes(gid));
+  const ellipse = els.find(e => e.type === 'ellipse');
+  const text    = els.find(e => e.type === 'text');
+  const arrow   = els.find(e => e.type === 'arrow');
+  const gid = ellipse.groupIds[0];
+  assert.ok(arrow.groupIds.includes(gid));
+  // text is bound via containerId and carries no groupIds (ungroup safety)
+  assert.equal(text.groupIds.length, 0);
+  assert.equal(text.containerId, ellipse.id);
 });
 
 import { buildAnnotation } from '../lib/scene.js';

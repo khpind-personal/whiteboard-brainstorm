@@ -6,6 +6,7 @@ import { parseTags } from '../lib/tags.js';
 import { mergeAiElements } from '../lib/merge.js';
 import { validateScene } from '../lib/schema.js';
 import { initVault, newBoard, mocAppend, writeVersion } from '../lib/vault.js';
+import { placeNear } from '../lib/placement.js';
 
 function readStdin() {
   return readFileSync(0, 'utf8');
@@ -15,7 +16,10 @@ function help() {
   process.stdout.write(`
 wbb <subcommand> [args]
 
-  build-scene           read JSON array of specs from stdin, emit elements
+  build-scene [--scene <user-scene>]
+                        read JSON array of specs from stdin, emit elements.
+                        If --scene given, specs with near:<elId> are placed
+                        next to the referenced element with collision avoidance.
   parse-tags <scene>    emit tag map (idea/problem/q/pin/rewrite/ping)
   merge <scene> <ai> <turn>   emit merged scene
   validate              read scene from stdin, exit 0/1
@@ -39,26 +43,58 @@ try {
       help(); break;
 
     case 'build-scene': {
+      // Optional: build-scene --scene <path> <   specs.json
+      // When --scene provided, specs with `near: <elId>` are positioned next to
+      // the target element using placeNear (with other user+AI elements as blockers).
+      let scenePath = null;
+      const args = [...rest];
+      if (args[0] === '--scene' && args[1]) { scenePath = args[1]; args.splice(0, 2); }
+
+      const userScene = scenePath
+        ? JSON.parse(readFileSync(scenePath, 'utf8'))
+        : { elements: [] };
+      const userElements = userScene.elements || [];
+      const elemById = new Map(userElements.map(e => [e.id, e]));
+
       const specs = JSON.parse(readStdin());
       const out = [];
+      const blockers = userElements.map(e => ({
+        x: e.x, y: e.y, width: e.width, height: e.height,
+      }));
+
       for (const spec of specs) {
+        // Resolve `near: <elId>` to absolute x/y via placeNear
+        if (spec.near && elemById.has(spec.near)) {
+          const target = elemById.get(spec.near);
+          const pt = placeNear(
+            { x: target.x, y: target.y, width: target.width, height: target.height },
+            blockers,
+            { width: 260, height: 100 },
+          );
+          spec.x = pt.x;
+          spec.y = pt.y;
+        }
+
+        let built;
         switch (spec.kind) {
-          case 'sticky':
-            out.push(...buildSticky(spec));
-            break;
-          case 'mindnode':
-            out.push(...buildMindNode(spec));
-            break;
+          case 'sticky':    built = buildSticky(spec); break;
+          case 'mindnode':  built = buildMindNode(spec); break;
           case 'annotation': {
             const { target, kind2, color, note, groupId } = spec;
-            out.push(...buildAnnotation({ target, kind: kind2, color, note, groupId }));
+            built = buildAnnotation({ target, kind: kind2, color, note, groupId });
             break;
           }
-          case 'panel':
-            out.push(...buildPanel(spec));
-            break;
+          case 'panel':     built = buildPanel(spec); break;
           default:
             throw new Error(`unknown kind: ${spec.kind}`);
+        }
+        out.push(...built);
+
+        // Track the bbox of what we just built so subsequent specs don't overlap it
+        for (const el of built) {
+          if (typeof el.x === 'number' && typeof el.width === 'number') {
+            blockers.push({ x: el.x, y: el.y, width: el.width, height: el.height });
+          }
         }
       }
       process.stdout.write(JSON.stringify(out, null, 2));
