@@ -37,6 +37,7 @@ async function main() {
   const app = express();
   app.use(express.json({ limit: '8mb' }));
   app.use(express.static(path.join(__dirname, 'public')));
+  app.use('/content', express.static(contentDir));
   app.get('/health', (req, res) => res.json({ ok: true }));
 
   app.post('/state', (req, res) => {
