@@ -88,6 +88,10 @@ try {
           default:
             throw new Error(`unknown kind: ${spec.kind}`);
         }
+        if (spec.rewriteOf && built.length > 0) {
+          // Attach rewriteOf to the container (first element) so merge picks it up
+          built[0].customData = { ...(built[0].customData ?? {}), rewriteOf: spec.rewriteOf };
+        }
         out.push(...built);
 
         // Track the bbox of what we just built so subsequent specs don't overlap it
