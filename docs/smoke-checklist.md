@@ -1,6 +1,6 @@
 # Manual Smoke Checklist (pre-release)
 
-Run in a fresh shell with no prior vault.
+Run in a fresh shell with `WBB_ROOT` pointed at an empty dir.
 
 ## preimpl
 
@@ -9,8 +9,8 @@ Run in a fresh shell with no prior vault.
 - [ ] Type `@q do we need SSO?` in a text element.
 - [ ] Click `@ping`.
 - [ ] Claude replies with a question-tone sticky within 10s.
-- [ ] `20-Canvases/<slug>/board-v1.excalidraw.json` exists.
-- [ ] `00-Index.md` has an entry for the session after `done`.
+- [ ] `$WBB_ROOT/20-Canvases/<slug>/board-v1.excalidraw.json` exists.
+- [ ] `$WBB_ROOT/10-Sessions/YYYY/MM/<slug>.md` exists with plain-MD frontmatter.
 
 ## general
 

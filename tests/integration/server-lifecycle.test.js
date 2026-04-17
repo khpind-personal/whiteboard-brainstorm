@@ -1,15 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 
 function bootServer(sessionDir) {
-  const child = spawn('node', ['server/server.cjs',
+  return spawn('node', ['server/server.cjs',
     '--session-dir', sessionDir, '--idle-seconds', '5'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  return child;
+}
+
+function readServerInfo(sessionDir) {
+  return JSON.parse(readFileSync(join(sessionDir, '.state', 'server-info'), 'utf8'));
+}
+
+async function stopAndCleanup(child, sessionDir) {
+  await new Promise(resolve => { child.on('exit', resolve); child.kill('SIGTERM'); });
+  rmSync(sessionDir, { recursive: true, force: true });
 }
 
 test('server writes server-info with url and port when it starts', async () => {
@@ -17,14 +25,13 @@ test('server writes server-info with url and port when it starts', async () => {
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const infoPath = join(sessionDir, 'state', 'server-info');
+    const infoPath = join(sessionDir, '.state', 'server-info');
     assert.ok(existsSync(infoPath), 'server-info missing');
     const info = JSON.parse(readFileSync(infoPath, 'utf8'));
     assert.ok(info.port >= 50000 && info.port < 60000);
     assert.match(info.url, /^http:\/\/127\.0\.0\.1:\d+$/);
   } finally {
-    child.kill('SIGTERM');
-    rmSync(sessionDir, { recursive: true, force: true });
+    await stopAndCleanup(child, sessionDir);
   }
 });
 
@@ -33,22 +40,21 @@ test('server responds to GET / with HTML page', async () => {
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     const res = await fetch(info.url + '/');
     assert.equal(res.status, 200);
     assert.match(await res.text(), /<html/i);
   } finally {
-    child.kill('SIGTERM');
-    rmSync(sessionDir, { recursive: true, force: true });
+    await stopAndCleanup(child, sessionDir);
   }
 });
 
-test('POST /state writes content/latest.excalidraw.json', async () => {
+test('POST /state writes latest.excalidraw.json in session dir', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-state-'));
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     const scene = { type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} };
     const res = await fetch(info.url + '/state', {
       method: 'POST',
@@ -56,25 +62,24 @@ test('POST /state writes content/latest.excalidraw.json', async () => {
       body: JSON.stringify(scene),
     });
     assert.equal(res.status, 200);
-    const stored = JSON.parse(readFileSync(join(sessionDir, 'content', 'latest.excalidraw.json'), 'utf8'));
+    const stored = JSON.parse(readFileSync(join(sessionDir, 'latest.excalidraw.json'), 'utf8'));
     assert.equal(stored.type, 'excalidraw');
   } finally {
-    child.kill('SIGTERM');
-    rmSync(sessionDir, { recursive: true, force: true });
+    await stopAndCleanup(child, sessionDir);
   }
 });
 
-test('POST /events appends to state/events.jsonl', async () => {
+test('POST /events appends to .state/events.jsonl', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-evt-'));
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     await fetch(info.url + '/events', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'ping', note: 'hello' }),
     });
-    const events = readFileSync(join(sessionDir, 'state', 'events.jsonl'), 'utf8').trim().split('\n');
+    const events = readFileSync(join(sessionDir, '.state', 'events.jsonl'), 'utf8').trim().split('\n');
     assert.equal(events.length, 1);
     const evt = JSON.parse(events[0]);
     assert.equal(evt.type, 'ping');
@@ -86,23 +91,19 @@ test('POST /events appends to state/events.jsonl', async () => {
   }
 });
 
-test('SSE /events-stream pushes refresh when content/latest changes', async () => {
+test('SSE /events-stream pushes refresh when latest.excalidraw.json changes', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-sse-'));
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     const res = await fetch(info.url + '/events-stream');
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
 
-    // touch the file
-    const contentPath = join(sessionDir, 'content', 'latest.excalidraw.json');
-    import('node:fs').then(fs => {
-      fs.writeFileSync(contentPath, JSON.stringify({
-        type: 'excalidraw', version: 2, elements: [], appState: {}, files: {},
-      }));
-    });
+    writeFileSync(join(sessionDir, 'latest.excalidraw.json'), JSON.stringify({
+      type: 'excalidraw', version: 2, elements: [], appState: {}, files: {},
+    }));
 
     let buf = '';
     const deadline = Date.now() + 3000;
@@ -119,12 +120,12 @@ test('SSE /events-stream pushes refresh when content/latest changes', async () =
   }
 });
 
-test('GET /versions returns [] when vault-root/slug are not provided', async () => {
+test('GET /versions returns [] when no version files present', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-ver-'));
   const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     const res = await fetch(info.url + '/versions');
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -135,30 +136,21 @@ test('GET /versions returns [] when vault-root/slug are not provided', async () 
   }
 });
 
-test('GET /versions + /versions/:n serve vault board-v*.excalidraw.json when configured', async () => {
-  const vault = mkdtempSync(join(tmpdir(), 'wbb-vault-'));
+test('GET /versions + /versions/:n serve board-v*.excalidraw.json in session dir', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-sd-'));
-  const slug = 'test-slug';
-  const vDir = join(vault, '20-Canvases', slug);
-  const { mkdirSync, writeFileSync } = await import('node:fs');
-  mkdirSync(vDir, { recursive: true });
-  writeFileSync(join(vDir, 'board-v0.excalidraw.json'),
+  // Seed version files in session dir itself — no separate vault lookup.
+  writeFileSync(join(sessionDir, 'board-v0.excalidraw.json'),
     JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }));
-  writeFileSync(join(vDir, 'board-v1.excalidraw.json'),
+  writeFileSync(join(sessionDir, 'board-v1.excalidraw.json'),
     JSON.stringify({ type: 'excalidraw', version: 2,
       elements: [{ id: 'x', type: 'rectangle', x: 0, y: 0, width: 10, height: 10,
                    seed: 1, versionNonce: 1, groupIds: [] }],
       appState: {}, files: {} }));
 
-  const child = spawn('node', ['server/server.cjs',
-    '--session-dir', sessionDir,
-    '--idle-seconds', '5',
-    '--vault-root', vault,
-    '--slug', slug,
-  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = bootServer(sessionDir);
   try {
     await wait(1200);
-    const info = JSON.parse(readFileSync(join(sessionDir, 'state', 'server-info'), 'utf8'));
+    const info = readServerInfo(sessionDir);
     const list = await (await fetch(info.url + '/versions')).json();
     assert.equal(list.length, 2);
     assert.deepEqual(list.map(x => x.n).sort((a, b) => a - b), [0, 1]);
@@ -169,6 +161,5 @@ test('GET /versions + /versions/:n serve vault board-v*.excalidraw.json when con
   } finally {
     await new Promise(resolve => { child.on('exit', resolve); child.kill('SIGTERM'); });
     rmSync(sessionDir, { recursive: true, force: true });
-    rmSync(vault, { recursive: true, force: true });
   }
 });

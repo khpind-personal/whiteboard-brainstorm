@@ -1,4 +1,21 @@
 // server/server.cjs
+//
+// Serves a single brainstorm session. The session dir IS the canvas dir:
+//
+//   <session-dir>/
+//     latest.excalidraw.json
+//     board-v0.excalidraw.json
+//     board-v1.excalidraw.json
+//     .state/
+//       events.jsonl
+//       server-info
+//       server.pid
+//       server.log
+//       server-stopped
+//
+// History scrubber reads versioned boards from the same dir — no separate
+// vault lookup.
+
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -27,13 +44,11 @@ function sweepPort(start = 50000, end = 59999) {
 }
 
 async function main() {
-  const { 'session-dir': sessionDir, 'idle-seconds': idleSec,
-          'vault-root': vaultRootArg, slug: slugArg } = parseArgs();
+  const { 'session-dir': sessionDir, 'idle-seconds': idleSec } = parseArgs();
   if (!sessionDir) { console.error('missing --session-dir'); process.exit(2); }
-  const vaultRoot = vaultRootArg || process.env.WHITEBOARD_VAULT_PATH || '';
-  const slug = slugArg || '';
-  const contentDir = path.join(sessionDir, 'content');
-  const stateDir   = path.join(sessionDir, 'state');
+
+  const contentDir = sessionDir;                     // live + versions live here
+  const stateDir   = path.join(sessionDir, '.state'); // runtime state
   fs.mkdirSync(contentDir, { recursive: true });
   fs.mkdirSync(stateDir, { recursive: true });
 
@@ -43,9 +58,8 @@ async function main() {
   app.use('/content', express.static(contentDir));
   app.get('/health', (req, res) => res.json({ ok: true }));
 
-  // Track the last time we wrote from a user POST (vs. an AI merge via external
-  // file write). Chokidar fires for both paths; we only want to broadcast
-  // SSE refresh for AI writes so the user's active edits aren't clobbered.
+  // Suppress SSE echo of our own /state POST so user edits don't clobber
+  // themselves. External writes (AI turn, /ai-write) still propagate.
   let lastSelfWrite = 0;
   const SELF_WRITE_WINDOW_MS = 800;
 
@@ -81,10 +95,12 @@ async function main() {
   }
 
   function maybeBroadcastRefresh(p) {
-    if (Date.now() - lastSelfWrite < SELF_WRITE_WINDOW_MS) return; // own echo
+    // Only broadcast on the live file so version writes don't flicker the canvas.
+    if (path.basename(p) !== 'latest.excalidraw.json') return;
+    if (Date.now() - lastSelfWrite < SELF_WRITE_WINDOW_MS) return;
     broadcast('refresh', { path: p });
   }
-  chokidar.watch(contentDir, { ignoreInitial: true })
+  chokidar.watch(contentDir, { ignoreInitial: true, depth: 0 })
     .on('add',    maybeBroadcastRefresh)
     .on('change', maybeBroadcastRefresh);
 
@@ -92,10 +108,8 @@ async function main() {
     try {
       const mode = req.query.mode;
       if (!mode) return res.json([]);
-      const vaultRoot = process.env.WHITEBOARD_VAULT_PATH ||
-                        path.join(process.env.HOME || '', 'Documents/Whiteboard-Brainstorm-Vault');
       const { listTemplates } = await import('../lib/templates.js');
-      res.json(listTemplates(vaultRoot, mode));
+      res.json(listTemplates(mode));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -114,7 +128,6 @@ async function main() {
   });
 
   // AI-write endpoint: like /state but explicitly broadcasts refresh.
-  // Use this for Claude's turn-loop writes so the browser re-renders.
   app.post('/ai-write', (req, res) => {
     const scene = req.body;
     fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
@@ -123,22 +136,14 @@ async function main() {
     res.json({ ok: true });
   });
 
-  // History scrubber: list + fetch versioned boards from the vault.
-  // Requires both --vault-root and --slug at startup; otherwise endpoints
-  // return empty / 404.
-  function versionsDir() {
-    if (!vaultRoot || !slug) return null;
-    return path.join(vaultRoot, '20-Canvases', slug);
-  }
-
+  // History scrubber: list + fetch versioned boards from the session dir.
   function listVersionFiles() {
-    const dir = versionsDir();
-    if (!dir || !fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir)
+    if (!fs.existsSync(contentDir)) return [];
+    return fs.readdirSync(contentDir)
       .filter(f => /^board-v(\d+)\.excalidraw\.json$/.test(f))
       .map(f => {
         const n = Number(f.match(/v(\d+)/)[1]);
-        const stat = fs.statSync(path.join(dir, f));
+        const stat = fs.statSync(path.join(contentDir, f));
         return { n, filename: f, mtime: stat.mtimeMs };
       })
       .sort((a, b) => a.n - b.n);
@@ -151,9 +156,7 @@ async function main() {
   app.get('/versions/:n', (req, res) => {
     const n = Number(req.params.n);
     if (!Number.isFinite(n)) return res.status(400).json({ error: 'bad version' });
-    const dir = versionsDir();
-    if (!dir) return res.status(404).json({ error: 'no vault configured' });
-    const file = path.join(dir, `board-v${n}.excalidraw.json`);
+    const file = path.join(contentDir, `board-v${n}.excalidraw.json`);
     if (!fs.existsSync(file)) return res.status(404).json({ error: 'version not found' });
     res.sendFile(file);
   });
@@ -164,7 +167,6 @@ async function main() {
 
   const server = app.listen(port, '127.0.0.1');
 
-  // idle auto-exit
   const idleMs = (Number(idleSec) || 1800) * 1000;
   let lastActivity = Date.now();
   app.use((req, res, next) => { lastActivity = Date.now(); next(); });

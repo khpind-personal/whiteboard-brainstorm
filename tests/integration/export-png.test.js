@@ -1,7 +1,7 @@
 // tests/integration/export-png.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -13,12 +13,11 @@ const CLI = new URL('../../bin/wbb.js', import.meta.url).pathname;
 const SKIP = process.env.WBB_SKIP_PLAYWRIGHT === '1';
 
 test('wbb export-png produces a valid PNG file', { skip: SKIP }, async () => {
-  const vault = mkdtempSync(join(tmpdir(), 'wbb-exp-'));
+  const root = mkdtempSync(join(tmpdir(), 'wbb-exp-'));
   try {
-    execFileSync('node', [CLI, 'vault-init', vault]);
-    const slug = 'export-test';
-    const dir = join(vault, '20-Canvases', slug);
-    mkdirSync(dir, { recursive: true });
+    const created = JSON.parse(execFileSync('node',
+      [CLI, 'new-session', 'general', 'export test', '--root', root],
+      { encoding: 'utf8' }));
     const scene = {
       type: 'excalidraw', version: 2,
       elements: [{
@@ -31,14 +30,16 @@ test('wbb export-png produces a valid PNG file', { skip: SKIP }, async () => {
       }],
       appState: { viewBackgroundColor: '#ffffff' }, files: {},
     };
-    writeFileSync(join(dir, 'latest.excalidraw.json'), JSON.stringify(scene));
+    writeFileSync(join(created.sessionDir, 'latest.excalidraw.json'), JSON.stringify(scene));
 
-    const outPath = execFileSync('node', [CLI, 'export-png', vault, slug], { encoding: 'utf8' }).trim();
+    const outPath = execFileSync('node',
+      [CLI, 'export-png', created.slug, '--root', root],
+      { encoding: 'utf8' }).trim();
     assert.ok(existsSync(outPath));
     const buf = readFileSync(outPath);
     assert.equal(buf[0], 0x89);
     assert.equal(buf[1], 0x50);
     assert.equal(buf[2], 0x4E);
     assert.equal(buf[3], 0x47);
-  } finally { rmSync(vault, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

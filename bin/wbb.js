@@ -5,7 +5,11 @@ import { buildSticky, buildMindNode, buildAnnotation, buildPanel } from '../lib/
 import { parseTags } from '../lib/tags.js';
 import { mergeAiElements } from '../lib/merge.js';
 import { validateScene } from '../lib/schema.js';
-import { initVault, newBoard, mocAppend, writeVersion } from '../lib/vault.js';
+import {
+  initStore, newSession, writeVersion, listSessions, compactSession,
+  sessionDir, resolveRoot, DEFAULT_ROOT,
+} from '../lib/store.js';
+import { listTemplates, defaultTemplatePath } from '../lib/templates.js';
 import { placeNear } from '../lib/placement.js';
 
 function readStdin() {
@@ -16,6 +20,9 @@ function help() {
   process.stdout.write(`
 wbb <subcommand> [args]
 
+  Store root resolved from --root <path>, else $WBB_ROOT,
+  else ${DEFAULT_ROOT}
+
   build-scene [--scene <user-scene>]
                         read JSON array of specs from stdin, emit elements.
                         If --scene given, specs with near:<elId> are placed
@@ -23,14 +30,32 @@ wbb <subcommand> [args]
   parse-tags <scene>    emit tag map (idea/problem/q/pin/rewrite/ping)
   merge <scene> <ai> <turn>   emit merged scene
   validate              read scene from stdin, exit 0/1
-  vault-init <path>     scaffold a vault at <path>
-  new-board <vault> <mode> <template> <topic>
-  moc-append <vault> <slug> <mode> <turns> <topic>
-  write-version <vault> <slug> <turn> <scene-file>
-  compact <vault> <slug>   archive board versions older than the latest 10
-  list-templates <vault> <mode>     list templates available for a mode
-  export-png <vault> <slug> [out]   render the latest board to PNG (requires V5 lib/export.js)
+
+  init [--root <path>]
+                        create store skeleton (idempotent)
+  new-session <mode> [topic] [--root <path>] [--template <path>]
+                        create new session; defaults template from mode;
+                        prints JSON {slug,sessionDir,boardPath,notePath,root}
+  write-version <slug> <turn> <scene-file> [--root <path>]
+  compact <slug> [--root <path>]
+                        archive versions older than latest 10
+  list-sessions [--root <path>]
+  list-templates <mode>
+  default-template <mode>
+                        print built-in template path for mode
+  export-png <slug> [out] [--root <path>]
+                        render latest board to PNG
+  session-dir <slug> [--root <path>]
+                        print absolute path of session dir
 `);
+}
+
+function takeFlag(args, name) {
+  const i = args.indexOf(`--${name}`);
+  if (i === -1) return null;
+  const val = args[i + 1];
+  args.splice(i, 2);
+  return val;
 }
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -43,9 +68,6 @@ try {
       help(); break;
 
     case 'build-scene': {
-      // Optional: build-scene --scene <path> <   specs.json
-      // When --scene provided, specs with `near: <elId>` are positioned next to
-      // the target element using placeNear (with other user+AI elements as blockers).
       let scenePath = null;
       const args = [...rest];
       if (args[0] === '--scene' && args[1]) { scenePath = args[1]; args.splice(0, 2); }
@@ -63,7 +85,6 @@ try {
       }));
 
       for (const spec of specs) {
-        // Resolve `near: <elId>` to absolute x/y via placeNear
         if (spec.near && elemById.has(spec.near)) {
           const target = elemById.get(spec.near);
           const pt = placeNear(
@@ -89,12 +110,10 @@ try {
             throw new Error(`unknown kind: ${spec.kind}`);
         }
         if (spec.rewriteOf && built.length > 0) {
-          // Attach rewriteOf to the container (first element) so merge picks it up
           built[0].customData = { ...(built[0].customData ?? {}), rewriteOf: spec.rewriteOf };
         }
         out.push(...built);
 
-        // Track the bbox of what we just built so subsequent specs don't overlap it
         for (const el of built) {
           if (typeof el.x === 'number' && typeof el.width === 'number') {
             blockers.push({ x: el.x, y: el.y, width: el.width, height: el.height });
@@ -126,58 +145,78 @@ try {
       if (!r.ok) { process.stderr.write(r.errors.join('\n') + '\n'); process.exit(1); }
       break;
     }
-    case 'vault-init': {
-      initVault(rest[0]);
-      process.stdout.write(`vault initialized: ${rest[0]}\n`);
+    case 'init': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const root = initStore(rootArg);
+      process.stdout.write(`store initialized: ${root}\n`);
       break;
     }
-    case 'new-board': {
-      const [vault, mode, template, topic] = rest;
-      const r = newBoard({ vaultRoot: vault, mode, templatePath: template, topic });
+    case 'new-session': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const templateArg = takeFlag(args, 'template');
+      const [mode, ...topicParts] = args;
+      if (!mode) throw new Error('new-session requires <mode>');
+      const topic = topicParts.join(' ') || '';
+      const templatePath = templateArg || defaultTemplatePath(mode);
+      const r = newSession({ rootArg, mode, templatePath, topic });
       process.stdout.write(JSON.stringify(r));
       break;
     }
-    case 'moc-append': {
-      const [vault, slug, mode, turns, topic] = rest;
-      mocAppend({ vaultRoot: vault, slug, mode, turns: Number(turns), topic });
-      break;
-    }
     case 'write-version': {
-      const [vault, slug, turn, sceneFile] = rest;
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [slug, turn, sceneFile] = args;
       const scene = JSON.parse(readFileSync(sceneFile, 'utf8'));
-      const path  = writeVersion({ vaultRoot: vault, slug, turn: Number(turn), scene });
-      process.stdout.write(path);
+      const p = writeVersion({ rootArg, slug, turn: Number(turn), scene });
+      process.stdout.write(p);
       break;
     }
     case 'compact': {
-      const [vault, slug] = rest;
-      const { readdirSync, renameSync, mkdirSync, copyFileSync } = await import('node:fs');
-      const { join } = await import('node:path');
-      const dir = join(vault, '20-Canvases', slug);
-      const arch = join(dir, '.archive');
-      mkdirSync(arch, { recursive: true });
-      const versions = readdirSync(dir)
-        .filter(f => /^board-v\d+\.excalidraw\.json$/.test(f))
-        .sort((a, b) => Number(b.match(/v(\d+)/)[1]) - Number(a.match(/v(\d+)/)[1]));
-      if (versions.length <= 10) break;
-      const latest = versions[0];
-      const latestNum = Number(latest.match(/v(\d+)/)[1]);
-      copyFileSync(join(dir, latest), join(dir, `board-compacted-v${latestNum}.excalidraw.json`));
-      for (const v of versions.slice(10)) renameSync(join(dir, v), join(arch, v));
-      process.stdout.write(`compacted ${versions.length - 10} versions to .archive\n`);
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [slug] = args;
+      const r = compactSession({ rootArg, slug });
+      process.stdout.write(`archived ${r.archived} versions\n`);
+      break;
+    }
+    case 'list-sessions': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      process.stdout.write(JSON.stringify(listSessions(rootArg), null, 2));
       break;
     }
     case 'list-templates': {
-      const [vault, mode] = rest;
-      const { listTemplates } = await import('../lib/templates.js');
-      process.stdout.write(JSON.stringify(listTemplates(vault, mode), null, 2));
+      const [mode] = rest;
+      process.stdout.write(JSON.stringify(listTemplates(mode), null, 2));
+      break;
+    }
+    case 'default-template': {
+      const [mode] = rest;
+      process.stdout.write(defaultTemplatePath(mode));
       break;
     }
     case 'export-png': {
-      const [vault, slug, outArg] = rest;
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [slug, outArg] = args;
       const { exportPng } = await import('../lib/export.js');
-      const outPath = await exportPng({ vaultRoot: vault, slug, outPath: outArg });
+      const outPath = await exportPng({ rootArg, slug, outPath: outArg });
       process.stdout.write(outPath);
+      break;
+    }
+    case 'session-dir': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [slug] = args;
+      process.stdout.write(sessionDir(rootArg, slug));
+      break;
+    }
+    case 'root': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      process.stdout.write(resolveRoot(rootArg));
       break;
     }
     default:
