@@ -11,6 +11,17 @@ function App() {
   const pingSeenRef = useRef(new Set());
   const pinSeenRef = useRef(new Set());
   const [picker, setPicker] = useState(null); // null | [{id,name,path}]
+  const [versions, setVersions] = useState([]);         // [{n, filename, mtime}]
+  const [previewN, setPreviewN] = useState(null);       // null = live; number = previewing
+
+  useEffect(() => { refreshVersions(); }, []);
+
+  async function refreshVersions() {
+    try {
+      const res = await fetch('/versions');
+      if (res.ok) setVersions(await res.json());
+    } catch (_) { /* ignore */ }
+  }
 
   useEffect(() => {
     // SSE refresh wired unconditionally — board may be opened without ?mode=
@@ -35,6 +46,7 @@ function App() {
           },
         });
       }
+      refreshVersions();
       // Fan the event out to listeners (ping-thinking indicator, etc.)
       window.dispatchEvent(new CustomEvent('wbb-scene-refresh'));
     });
@@ -68,6 +80,7 @@ function App() {
   }, DEBOUNCE_MS));
 
   function onChange(elements, appState, files) {
+    if (previewN !== null) return; // preview mode is read-only
     debouncedPost.current({
       type: 'excalidraw', version: 2, source: 'browser',
       elements, appState, files,
@@ -173,6 +186,44 @@ function App() {
     setTimeout(() => { label.textContent = '@ping'; }, 1800);
   }
 
+  async function previewVersion(n) {
+    const res = await fetch('/versions/' + n);
+    if (!res.ok) return;
+    const scene = await res.json();
+    if (apiRef.current) {
+      const currentApp = apiRef.current.getAppState();
+      apiRef.current.updateScene({
+        elements: scene.elements,
+        appState: {
+          scrollX: currentApp.scrollX, scrollY: currentApp.scrollY,
+          zoom: currentApp.zoom,
+          viewBackgroundColor: (scene.appState && scene.appState.viewBackgroundColor) || '#ffffff',
+          collaborators: [],
+          viewModeEnabled: true,
+        },
+      });
+    }
+    setPreviewN(n);
+  }
+
+  async function backToLive() {
+    const scene = await fetchLatest();
+    if (apiRef.current && scene) {
+      const currentApp = apiRef.current.getAppState();
+      apiRef.current.updateScene({
+        elements: scene.elements,
+        appState: {
+          scrollX: currentApp.scrollX, scrollY: currentApp.scrollY,
+          zoom: currentApp.zoom,
+          viewBackgroundColor: (scene.appState && scene.appState.viewBackgroundColor) || '#ffffff',
+          collaborators: [],
+          viewModeEnabled: false,
+        },
+      });
+    }
+    setPreviewN(null);
+  }
+
   async function pickTemplate(t) {
     await fetch('/init-board', {
       method: 'POST', headers: { 'content-type': 'application/json' },
@@ -198,11 +249,39 @@ function App() {
     );
   }
   if (!initialData) return createElement('div', { style: { padding: 20 } }, 'Loading\u2026');
-  return createElement(Excalidraw, {
+
+  const scrubberChildren = [
+    createElement('span', { className: 'scrubber-label', key: 'lbl' }, 'History:'),
+    ...versions.map(v => createElement('button', {
+      key: 'v' + v.n,
+      className: 'scrubber-pill' + (previewN === v.n ? ' active' : ''),
+      title: new Date(v.mtime).toLocaleString(),
+      onClick: () => previewVersion(v.n),
+    }, 'v' + v.n)),
+    createElement('button', {
+      key: 'live',
+      className: 'scrubber-pill' + (previewN === null ? ' live' : ''),
+      onClick: backToLive,
+    }, 'live'),
+  ];
+
+  const pieces = [
+    createElement('div', { className: 'scrubber', key: 'scrubber' }, scrubberChildren),
+  ];
+  if (previewN !== null) {
+    pieces.push(createElement('div', { className: 'preview-banner', key: 'banner' },
+      createElement('span', { key: 't' }, 'Previewing v' + previewN + ' \u2014 read-only'),
+      createElement('button', { key: 'b', onClick: backToLive }, 'Back to live'),
+    ));
+  }
+  pieces.push(createElement(Excalidraw, {
+    key: 'excalidraw',
     initialData,
     excalidrawAPI: (api) => { apiRef.current = api; window.__wbb_api = api; },
     onChange,
-  });
+    viewModeEnabled: previewN !== null,
+  }));
+  return createElement('div', { style: { position: 'relative', height: '100%' } }, pieces);
 }
 
 function debounce(fn, ms) {
