@@ -11,8 +11,16 @@ shapes (stickies, mind-nodes, annotations, panels) on the same canvas.
 
 ## Invocation
 
-User invokes: `/whiteboard-brainstorm <mode> [topic]`
+User invokes: `/whiteboard-brainstorm [--manual] <mode> [topic]`
 Modes: `preimpl`, `general`, `mindmap`.
+
+**Default behavior is auto-poll:** after each turn, Claude self-schedules
+a wake-up via `ScheduleWakeup(delaySeconds: 60)` and re-reads
+`events.jsonl`. The user does NOT need to press Enter in the terminal
+— they only need to ping from the browser.
+
+Pass `--manual` to opt out. Manual mode waits for the user to return to
+the terminal and press Enter between turns.
 
 ## Storage model
 
@@ -107,16 +115,39 @@ coupling.
     pushed. Remind the user the URL is still live and to ping again
     when ready. Do NOT auto-loop — wait for the next terminal turn.
 
-### Auto-poll option (dynamic loop)
+### Auto-poll (default) — blocking Bash wait
 
-If the user invoked the skill via `/loop /whiteboard-brainstorm <mode> [topic]`
-(dynamic mode), you may call `ScheduleWakeup` at the end of each turn with
-`delaySeconds: 60` to poll `events.jsonl` for new pings without requiring the
-user to press Enter. On wake: read events; if new ping, run the turn loop;
-if not, reschedule. Keep polling until the user stops the loop.
+Unless `--manual` was passed, after step 11 of the turn loop, issue a
+**blocking Bash command** that waits for the next ping event:
 
-Otherwise (no `/loop` wrapper), wait for the user to return to terminal
-and press Enter to trigger the next turn.
+```bash
+for i in $(seq 1 110); do
+  [ -s <sessionDir>/.state/events.jsonl ] && break
+  [ -f <sessionDir>/.state/server-stopped ] && echo SERVER_STOPPED && exit 0
+  sleep 5
+done
+cat <sessionDir>/.state/events.jsonl
+```
+
+Set the Bash `timeout` to `600000` (10 min). The command returns when:
+
+- `events.jsonl` has content → you get the event payload → run the next
+  turn loop (steps 2–10 above), then issue another blocking wait.
+- `server-stopped` file appears → print `SERVER_STOPPED`, tell user,
+  stop polling.
+- 10 min elapses with nothing → command exits empty. Tell the user
+  "still idle — ping from the browser when ready" and issue another
+  blocking wait.
+
+This mode requires NO terminal input between turns. User just draws +
+pings; you respond. The session stays alive in a blocking Bash call
+between pings.
+
+### Manual mode (--manual)
+
+If user passed `--manual`, skip the blocking wait and reply in terminal
+with a one-line summary + "press Enter to check for new pings". Wait for
+the user to return and press Enter to trigger the next turn.
 
 ## End of session
 
