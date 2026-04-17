@@ -103,3 +103,25 @@ test('buildAnnotation rejects unknown color role', () => {
   const target = { id: 't1', x: 0, y: 0, width: 10, height: 10 };
   assert.throws(() => buildAnnotation({ target, kind: 'circle', color: 'banana' }));
 });
+
+import { buildPanel } from '../lib/scene.js';
+
+test('buildPanel produces rectangle + title text + body text', () => {
+  const els = buildPanel({ title: 'Summary', body: 'line 1\nline 2\nline 3', x: 0, y: 0 });
+  const types = els.map(e => e.type).sort();
+  assert.deepEqual(types, ['rectangle', 'text', 'text']);
+});
+
+test('buildPanel height grows with body line count', () => {
+  const short = buildPanel({ title: 't', body: 'one line' });
+  const long  = buildPanel({ title: 't', body: Array(8).fill('line').join('\n') });
+  const shortRect = short.find(e => e.type === 'rectangle');
+  const longRect  = long.find(e => e.type === 'rectangle');
+  assert.ok(longRect.height > shortRect.height);
+});
+
+test('buildPanel all elements share a groupId', () => {
+  const els = buildPanel({ title: 't', body: 'b' });
+  const gid = els[0].groupIds[0];
+  for (const el of els) assert.ok(el.groupIds.includes(gid));
+});
