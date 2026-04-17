@@ -1,6 +1,6 @@
 // tests/e2e/_helpers.js
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -46,4 +46,16 @@ export async function waitForServer(sessionDir, timeoutMs = 5000) {
 export function stopSession(ctx) {
   ctx.proc.kill('SIGTERM');
   execFileSync('rm', ['-rf', ctx.vault]);
+}
+
+export async function restartServer(ctx) {
+  await new Promise(resolve => { ctx.proc.on('exit', resolve); ctx.proc.kill('SIGTERM'); });
+  try { unlinkSync(join(ctx.sessionDir, 'state/server-info')); } catch (_) {}
+  try { unlinkSync(join(ctx.sessionDir, 'state/server-stopped')); } catch (_) {}
+  const proc = spawn('node', [
+    resolve(import.meta.dirname, '../../server/server.cjs'),
+    '--session-dir', ctx.sessionDir, '--idle-seconds', '60',
+  ]);
+  ctx.proc = proc;
+  return await waitForServer(ctx.sessionDir);
 }
