@@ -17,9 +17,21 @@ function App() {
     es.addEventListener('refresh', async () => {
       const scene = await fetchLatest();
       if (apiRef.current && scene) {
+        // Preserve viewport (scroll + zoom) + editing state so an AI refresh
+        // doesn't jump the canvas out from under the user. Only override
+        // elements + files; merge appState conservatively.
+        const currentApp = apiRef.current.getAppState();
         apiRef.current.updateScene({
           elements: scene.elements,
-          appState: { ...(scene.appState || {}), collaborators: [] },
+          appState: {
+            scrollX: currentApp.scrollX,
+            scrollY: currentApp.scrollY,
+            zoom: currentApp.zoom,
+            viewBackgroundColor:
+              (scene.appState && scene.appState.viewBackgroundColor) ||
+              currentApp.viewBackgroundColor,
+            collaborators: [],
+          },
         });
       }
     });
@@ -77,7 +89,14 @@ function App() {
   }
 
   useEffect(() => {
-    document.getElementById('ping').addEventListener('click', () => {
+    const btn = document.getElementById('ping');
+    btn.addEventListener('click', async () => {
+      // Commit any in-progress text edit before posting so it isn't lost
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+      // Small delay lets Excalidraw finalize the text edit into the scene
+      await new Promise(r => setTimeout(r, 60));
       const selected = apiRef.current ? apiRef.current.getSceneElements()
         .filter(e => apiRef.current.getAppState().selectedElementIds[e.id])
         .map(e => e.id) : [];
@@ -85,6 +104,7 @@ function App() {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ type: 'ping', selectedIds: selected }),
       });
+      flashPingSent(btn);
     });
   }, []);
 
@@ -123,6 +143,16 @@ function App() {
 function debounce(fn, ms) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+function flashPingSent(btn) {
+  const orig = btn.textContent;
+  btn.textContent = 'Sent \u00b7 check terminal';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }, 2000);
 }
 
 async function fetchLatest() {

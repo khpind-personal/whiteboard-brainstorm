@@ -44,9 +44,12 @@ Modes: `preimpl`, `general`, `mindmap`.
    <plugin>/server/start-board-server.sh <vault-root>/_state/<slug>
    ```
    The script prints JSON with `url` and the session `mode`. Share the URL with
-   the user:
+   the user AND the terminal-continue instruction:
+
    "Canvas live at <url>?mode=<mode>. Draw freely. Tag text with @idea / @problem / @q.
-   Click @ping when you want me to respond."
+   Click the @ping button (or write `@ping` in a text element) when you want me
+   to respond. **After pinging, come back to this terminal and press Enter** —
+   I don't watch the canvas live; I respond on the next terminal turn."
 
 ## Turn loop (each user turn)
 
@@ -94,7 +97,8 @@ Modes: `preimpl`, `general`, `mindmap`.
     : > <session>/state/events.jsonl
     ```
 11. **Reply in terminal** with a one-line summary of the shapes you pushed.
-    Remind the user the URL is still live.
+    Remind the user the URL is still live and to ping again when ready for the
+    next turn. Do NOT auto-loop — wait for the next terminal turn from the user.
 
 ## End of session
 

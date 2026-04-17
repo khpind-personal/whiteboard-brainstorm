@@ -40,8 +40,15 @@ async function main() {
   app.use('/content', express.static(contentDir));
   app.get('/health', (req, res) => res.json({ ok: true }));
 
+  // Track the last time we wrote from a user POST (vs. an AI merge via external
+  // file write). Chokidar fires for both paths; we only want to broadcast
+  // SSE refresh for AI writes so the user's active edits aren't clobbered.
+  let lastSelfWrite = 0;
+  const SELF_WRITE_WINDOW_MS = 800;
+
   app.post('/state', (req, res) => {
     const scene = req.body;
+    lastSelfWrite = Date.now();
     fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
                      JSON.stringify(scene, null, 2));
     res.json({ ok: true });
@@ -70,9 +77,13 @@ async function main() {
     for (const c of sseClients) try { c.write(msg); } catch (_) {}
   }
 
+  function maybeBroadcastRefresh(p) {
+    if (Date.now() - lastSelfWrite < SELF_WRITE_WINDOW_MS) return; // own echo
+    broadcast('refresh', { path: p });
+  }
   chokidar.watch(contentDir, { ignoreInitial: true })
-    .on('add',    (p) => broadcast('refresh', { path: p }))
-    .on('change', (p) => broadcast('refresh', { path: p }));
+    .on('add',    maybeBroadcastRefresh)
+    .on('change', maybeBroadcastRefresh);
 
   app.get('/templates', async (req, res) => {
     try {
@@ -97,6 +108,16 @@ async function main() {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // AI-write endpoint: like /state but explicitly broadcasts refresh.
+  // Use this for Claude's turn-loop writes so the browser re-renders.
+  app.post('/ai-write', (req, res) => {
+    const scene = req.body;
+    fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
+                     JSON.stringify(scene, null, 2));
+    broadcast('refresh', { path: 'latest.excalidraw.json', source: 'ai' });
+    res.json({ ok: true });
   });
 
   const port = await sweepPort();
