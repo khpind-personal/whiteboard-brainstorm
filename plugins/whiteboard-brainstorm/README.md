@@ -38,6 +38,12 @@ Agent | Explicit entrypoint
 Claude Code | `/whiteboard-brainstorm <mode> [topic]`
 Codex | `whiteboard-brainstorm <mode> [topic]`
 
+For the smoothest session, run Claude Code with auto-mode enabled or run
+Codex with `--full-auto`. The whiteboard loop works best when the assistant
+can continuously run the local shell commands that watch for pings, read the
+canvas state, merge AI elements, and write the next board version without
+asking for command approval on every turn.
+
 Modes:
 
 - `preimpl` — pre-implementation brainstorm
