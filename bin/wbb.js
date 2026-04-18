@@ -45,8 +45,14 @@ wbb <subcommand> [args]
                         print built-in template path for mode
   export-png <slug> [out] [--root <path>]
                         render latest board to PNG
+  export-transcript <slug> [out] [--root <path>]
+                        emit a Markdown transcript of the session to stdout
+                        (or write to out if given)
   session-dir <slug> [--root <path>]
                         print absolute path of session dir
+  branch <src-slug> <dst-topic> [--root <path>]
+                        fork a session: copy versions to a new slug, fresh
+                        runtime state, empty events
 `);
 }
 
@@ -219,6 +225,31 @@ try {
       const { exportPng } = await import('../lib/export.js');
       const outPath = await exportPng({ rootArg, slug, outPath: outArg });
       process.stdout.write(outPath);
+      break;
+    }
+    case 'export-transcript': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [slug, outArg] = args;
+      const { exportTranscript } = await import('../lib/transcript.js');
+      const md = exportTranscript({ rootArg, slug });
+      if (outArg) {
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync(outArg, md);
+        process.stdout.write(outArg);
+      } else {
+        process.stdout.write(md);
+      }
+      break;
+    }
+    case 'branch': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const [srcSlug, dstTopic] = args;
+      if (!srcSlug || !dstTopic) throw new Error('branch requires <src-slug> <dst-topic>');
+      const { branchSession } = await import('../lib/store.js');
+      const r = branchSession({ rootArg, srcSlug, dstTopic });
+      process.stdout.write(JSON.stringify(r));
       break;
     }
     case 'session-dir': {

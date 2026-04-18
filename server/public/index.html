@@ -29,6 +29,18 @@
       0%, 100% { transform: scale(0.6); opacity: 0.35; }
       50%      { transform: scale(1.15); opacity: 1;    }
     }
+    /* Cursor-trail dot shown at the AI drop zone during thinking. */
+    .cursor-trail {
+      position: fixed; pointer-events: none; z-index: 9;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #1e1e1e; opacity: 0;
+      box-shadow: 0 0 0 6px rgba(30, 30, 30, 0.15);
+      transition: opacity 180ms ease, left 200ms ease, top 200ms ease;
+    }
+    .cursor-trail.active {
+      opacity: 0.85;
+      animation: ping-pulse 1.2s ease-in-out infinite;
+    }
     .picker-backdrop {
       position: fixed; inset: 0; background: rgba(0,0,0,0.4);
       display: flex; align-items: center; justify-content: center; z-index: 100;
@@ -66,6 +78,18 @@
     .scrubber-pill.live { background: #D4F5D4; font-weight: 700; }
     .scrubber-pill.active { background: #FFEB9C; font-weight: 700; }
     .scrubber-label { font-weight: 600; padding: 0 4px; opacity: 0.7; }
+    .thumb-popover {
+      position: fixed; z-index: 12; display: none;
+      padding: 4px; background: #fff; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .thumb-popover.visible { display: block; }
+    .thumb-popover img { display: block; width: 320px; height: auto; border-radius: 3px; }
+    .thumb-popover .thumb-loading {
+      width: 320px; height: 180px; display: flex;
+      align-items: center; justify-content: center;
+      font: 500 12px/1 system-ui; color: #666;
+    }
     .preview-banner {
       position: fixed; top: 98px; right: 16px;
       z-index: 11; background: #FFEB9C; border: 1.5px solid #1e1e1e;
@@ -84,6 +108,8 @@
     <span class="ping-dot" aria-hidden="true"></span>
     <span class="ping-label">@ping</span>
   </button>
+  <div id="cursor-trail" class="cursor-trail" aria-hidden="true"></div>
+  <div id="thumb-popover" class="thumb-popover" aria-hidden="true"></div>
   <script src="vendor/react.development.js"></script>
   <script src="vendor/react-dom.development.js"></script>
   <script src="vendor/excalidraw.development.js"></script>

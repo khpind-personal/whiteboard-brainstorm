@@ -184,6 +184,26 @@ async function main() {
     res.sendFile(file);
   });
 
+  // Scrubber thumbnails: lazy PNG render of a specific version. Cached in
+  // <sessionDir>/.state/thumbs/v<N>.png so first hover is slow, rest are fast.
+  const thumbDir = path.join(stateDir, 'thumbs');
+  fs.mkdirSync(thumbDir, { recursive: true });
+  app.get('/versions/:n/thumb', async (req, res) => {
+    const n = Number(req.params.n);
+    if (!Number.isFinite(n)) return res.status(400).json({ error: 'bad version' });
+    const src = path.join(contentDir, `board-v${n}.excalidraw.json`);
+    if (!fs.existsSync(src)) return res.status(404).json({ error: 'version not found' });
+    const out = path.join(thumbDir, `v${n}.png`);
+    if (fs.existsSync(out)) return res.sendFile(out);
+    try {
+      const { exportSceneToPng } = await import('../lib/export.js');
+      await exportSceneToPng({ sceneFile: src, outPath: out });
+      res.sendFile(out);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   const port = await sweepPort();
   const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };
   fs.writeFileSync(path.join(stateDir, 'server-info'), JSON.stringify(info, null, 2));

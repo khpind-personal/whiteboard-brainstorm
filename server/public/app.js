@@ -10,6 +10,7 @@ function App() {
   const [initialData, setInitialData] = useState(null);
   const pingSeenRef = useRef(new Set());
   const pinSeenRef = useRef(new Set());
+  const wrappedRef = useRef(new Set());   // ids of user text elements already auto-wrapped
   const [picker, setPicker] = useState(null); // null | [{id,name,path}]
   const [versions, setVersions] = useState([]);         // [{n, filename, mtime}]
   const [previewN, setPreviewN] = useState(null);       // null = live; number = previewing
@@ -103,9 +104,46 @@ function App() {
       type: 'excalidraw', version: 2, source: 'browser',
       elements, appState, files,
     });
+    const isAi = (el) => el.customData && el.customData.source === 'ai';
+
+    // Auto-wrap user free-text that has grown wider than ~500px. Excalidraw
+    // lets plain text grow horizontally forever, which drives content off
+    // the canvas. Once a wrap has been applied to an element id we stop
+    // re-wrapping it so the user can still resize manually.
+    const WRAP_PX = 500;
+    const WRAP_CHARS = 60;
+    const toUpdate = [];
+    for (const el of elements) {
+      if (el.type !== 'text') continue;
+      if (isAi(el)) continue;
+      if (el.containerId) continue;           // bound text — container handles it
+      if (wrappedRef.current.has(el.id)) continue;
+      if (typeof el.width !== 'number' || el.width <= WRAP_PX) continue;
+      if (typeof el.text !== 'string' || el.text.length < WRAP_CHARS) continue;
+
+      const wrapped = wrapTextString(el.text, WRAP_CHARS);
+      if (wrapped === el.text) continue;
+      const lines = wrapped.split('\n').length;
+      const lh = Math.round((el.fontSize || 20) * 1.4);
+      toUpdate.push({
+        ...el,
+        text: wrapped,
+        originalText: wrapped,
+        width: Math.min(el.width, 520),
+        height: lines * lh,
+        autoResize: false,
+      });
+      wrappedRef.current.add(el.id);
+    }
+    if (toUpdate.length > 0 && apiRef.current) {
+      const byId = new Map(toUpdate.map(e => [e.id, e]));
+      apiRef.current.updateScene({
+        elements: elements.map(e => byId.get(e.id) || e),
+      });
+    }
+
     // drawn-ping detection: fire ping event when a NEW user-authored @ping
     // text element appears. AI-sourced text and already-seen ids are skipped.
-    const isAi = (el) => el.customData && el.customData.source === 'ai';
     const seen = pingSeenRef.current;
     const currentIds = new Set();
     for (const el of elements) {
@@ -184,6 +222,7 @@ function App() {
     btn.disabled = true;
     const label = btn.querySelector('.ping-label');
     if (label) label.textContent = 'Thinking\u2026';
+    showCursorTrail();
     // Safety timeout: if no AI response in 90s, reset so user can try again.
     if (thinkingTimeoutRef.current) clearTimeout(thinkingTimeoutRef.current);
     thinkingTimeoutRef.current = setTimeout(() => {
@@ -197,6 +236,7 @@ function App() {
       clearTimeout(thinkingTimeoutRef.current);
       thinkingTimeoutRef.current = null;
     }
+    hideCursorTrail();
     const btn = document.getElementById('ping');
     if (!btn) return;
     btn.classList.remove('thinking');
@@ -205,6 +245,42 @@ function App() {
     if (!label) return;
     label.textContent = timedOut ? 'Still waiting\u2026' : '\u2713 Done';
     setTimeout(() => { label.textContent = '@ping'; }, 1800);
+  }
+
+  // Cursor-trail dot pulses at the AI drop zone while thinking. Computed
+  // in canvas coordinates from user-authored elements, then projected to
+  // screen coordinates via the current Excalidraw viewport.
+  function showCursorTrail() {
+    const trail = document.getElementById('cursor-trail');
+    if (!trail || !apiRef.current) return;
+    const els = apiRef.current.getSceneElements()
+      .filter(e => !e.isDeleted
+        && (!e.customData || e.customData.source !== 'ai')
+        && typeof e.x === 'number' && typeof e.y === 'number');
+    if (els.length === 0) {
+      trail.style.left = (window.innerWidth / 2) + 'px';
+      trail.style.top  = (window.innerHeight / 2) + 'px';
+    } else {
+      let maxX = -Infinity, minY = Infinity;
+      for (const e of els) {
+        maxX = Math.max(maxX, e.x + (e.width || 0));
+        minY = Math.min(minY, e.y);
+      }
+      const dropX = maxX + 60;
+      const dropY = minY + 40;
+      const app = apiRef.current.getAppState();
+      const zoom = (app.zoom && app.zoom.value) || 1;
+      const screenX = (dropX - app.scrollX) * zoom;
+      const screenY = (dropY - app.scrollY) * zoom;
+      trail.style.left = screenX + 'px';
+      trail.style.top  = screenY + 'px';
+    }
+    trail.classList.add('active');
+  }
+
+  function hideCursorTrail() {
+    const trail = document.getElementById('cursor-trail');
+    if (trail) trail.classList.remove('active');
   }
 
   async function previewVersion(n) {
@@ -269,6 +345,55 @@ function App() {
       )
     );
   }
+  const thumbHideTimer = useRef(null);
+
+  function thumbLoadingNode() {
+    const d = document.createElement('div');
+    d.className = 'thumb-loading';
+    d.textContent = 'loading\u2026';
+    return d;
+  }
+  function thumbEmptyNode(text) {
+    const d = document.createElement('div');
+    d.className = 'thumb-loading';
+    d.textContent = text;
+    return d;
+  }
+  function replaceChildren(node, child) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+    if (child) node.appendChild(child);
+  }
+
+  function showThumb(anchorEl, n) {
+    if (thumbHideTimer.current) {
+      clearTimeout(thumbHideTimer.current);
+      thumbHideTimer.current = null;
+    }
+    const pop = document.getElementById('thumb-popover');
+    if (!pop || !anchorEl) return;
+    const rect = anchorEl.getBoundingClientRect();
+    pop.style.left = Math.max(8, rect.right - 320) + 'px';
+    pop.style.top  = (rect.bottom + 6) + 'px';
+    replaceChildren(pop, thumbLoadingNode());
+    pop.classList.add('visible');
+    const url = '/versions/' + n + '/thumb';
+    const img = new Image();
+    img.onload = () => {
+      if (pop.classList.contains('visible')) replaceChildren(pop, img);
+    };
+    img.onerror = () => {
+      if (pop.classList.contains('visible')) replaceChildren(pop, thumbEmptyNode('no preview'));
+    };
+    img.src = url;
+  }
+
+  function hideThumb() {
+    thumbHideTimer.current = setTimeout(() => {
+      const pop = document.getElementById('thumb-popover');
+      if (pop) pop.classList.remove('visible');
+    }, 120);
+  }
+
   if (!initialData) return createElement('div', { style: { padding: 20 } }, 'Loading\u2026');
 
   const scrubberChildren = [
@@ -278,6 +403,8 @@ function App() {
       className: 'scrubber-pill' + (previewN === v.n ? ' active' : ''),
       title: new Date(v.mtime).toLocaleString(),
       onClick: () => previewVersion(v.n),
+      onMouseEnter: (e) => showThumb(e.currentTarget, v.n),
+      onMouseLeave: () => hideThumb(),
     }, 'v' + v.n)),
     createElement('button', {
       key: 'live',
@@ -344,6 +471,32 @@ function normalizeScene(scene) {
     }
   }
   return scene;
+}
+
+function wrapTextString(text, chars) {
+  if (!text) return '';
+  const out = [];
+  for (const raw of text.split('\n')) {
+    if (raw.length <= chars) { out.push(raw); continue; }
+    const words = raw.split(/\s+/);
+    let cur = '';
+    for (const word of words) {
+      if (word.length > chars) {
+        if (cur) { out.push(cur); cur = ''; }
+        for (let i = 0; i < word.length; i += chars) {
+          const chunk = word.slice(i, i + chars);
+          if (i + chars >= word.length) cur = chunk;
+          else out.push(chunk);
+        }
+        continue;
+      }
+      if (!cur) { cur = word; continue; }
+      if (cur.length + 1 + word.length <= chars) cur += ' ' + word;
+      else { out.push(cur); cur = word; }
+    }
+    if (cur) out.push(cur);
+  }
+  return out.join('\n');
 }
 
 async function fetchLatest() {
