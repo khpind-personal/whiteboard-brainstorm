@@ -3,11 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSticky, buildPanel, buildMindNode } from '../lib/scene.js';
 
-test('buildSticky: rectangle.boundElements contains the text element id', () => {
+test('buildSticky: uses free-floating text, not container-bound', () => {
+  // Sticky text is free-floating (like panels) because Excalidraw's bound-text
+  // auto-resize misbehaves on updateScene — causes blank / clipped text.
   const [rect, text] = buildSticky({ tone: 'question', text: 'hi' });
   assert.ok(Array.isArray(rect.boundElements));
-  assert.ok(rect.boundElements.some(b => b.id === text.id && b.type === 'text'));
-  assert.equal(text.containerId, rect.id);
+  assert.equal(rect.boundElements.length, 0);
+  assert.equal(text.containerId, undefined);
+  assert.equal(text.autoResize, false);
 });
 
 test('buildPanel: rectangle does NOT bind its text children (avoids Excalidraw multi-bind render bug)', () => {

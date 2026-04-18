@@ -34,7 +34,10 @@ test('end-to-end: init → new-session → build → merge → write-version', (
 
     const merged = JSON.parse(run(['merge', nb.boardPath, aiFile, '1']));
     assert.equal(merged.elements.length, 2);
-    assert.ok(merged.elements[0].groupIds.some(g => g.startsWith('ai-v1')));
+    // Turn-level ai-v group was removed; verify per-shape sticky group + customData.turn.
+    assert.ok(merged.elements[0].groupIds.some(g => g.startsWith('sticky-')));
+    assert.equal(merged.elements[0].customData.turn, 1);
+    assert.equal(merged.elements[0].customData.source, 'ai');
 
     const mergedFile = join(root, '_merged.json');
     writeFileSync(mergedFile, JSON.stringify(merged));

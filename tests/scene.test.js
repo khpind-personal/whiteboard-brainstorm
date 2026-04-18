@@ -5,16 +5,18 @@ import { buildSticky } from '../lib/scene.js';
 import { validateElement } from '../lib/schema.js';
 import { STICKY_PALETTE, TEXT_COLOR } from '../lib/constants.js';
 
-test('buildSticky produces rectangle + container-bound text (text has no groupIds to survive ungroup)', () => {
+test('buildSticky produces rectangle + free-floating text sharing a groupId', () => {
   const [rect, text] = buildSticky({ tone: 'question', text: 'need auth?', x: 50, y: 50 });
   assert.equal(rect.type, 'rectangle');
   assert.equal(text.type, 'text');
-  // rect is grouped; text is bound via containerId and has NO groupIds
-  // so user can ungroup the rect without orphaning the text into Excalidraw
-  // invariant errors.
+  // Rect + text share one per-sticky group so they drag as a unit.
+  // Text is NOT container-bound (Excalidraw's bound-text autoresize blanks out
+  // after updateScene); autoResize: false wraps at the fixed width.
   assert.equal(rect.groupIds.length, 1);
-  assert.equal(text.groupIds.length, 0);
-  assert.equal(text.containerId, rect.id);
+  assert.equal(text.groupIds.length, 1);
+  assert.equal(rect.groupIds[0], text.groupIds[0]);
+  assert.equal(text.containerId, undefined);
+  assert.equal(text.autoResize, false);
 });
 
 test('buildSticky assigns palette fill matching tone', () => {

@@ -18,13 +18,14 @@ test('mergeAiElements preserves all user elements', () => {
   assert.ok(out.elements.find(e => e.id === 'u1'));
 });
 
-test('mergeAiElements tags AI elements with ai-v<N> group and customData.source=ai', () => {
+test('mergeAiElements tags AI elements via customData.source=ai + customData.turn', () => {
   const scene = baseScene([userEl]);
   const out = mergeAiElements(scene, [aiEl], 3);
   const merged = out.elements.find(e => e.id === 'a1');
-  assert.ok(merged.groupIds.includes('ai-v3'));
   assert.equal(merged.customData.source, 'ai');
   assert.equal(merged.customData.turn, 3);
+  // No turn-level group — would force multi-select of all turn elements.
+  assert.ok(!merged.groupIds.some(g => g.startsWith('ai-v')));
 });
 
 test('mergeAiElements preserves pre-existing AI elements from prior turns', () => {
@@ -41,5 +42,4 @@ test('mergeAiElements preserves existing groupIds on AI elements', () => {
   const out = mergeAiElements(baseScene([]), [withGroup], 1);
   const merged = out.elements.find(e => e.id === 'a1');
   assert.ok(merged.groupIds.includes('sticky-abc'));
-  assert.ok(merged.groupIds.includes('ai-v1'));
 });

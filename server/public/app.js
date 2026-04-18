@@ -16,6 +16,18 @@ function App() {
 
   useEffect(() => { refreshVersions(); }, []);
 
+  // Preseed seen sets from existing scene elements so pre-existing @ping /
+  // @pin text (template hints or leftover from prior session) doesn't fire
+  // a stray event when the page loads or the scene updates.
+  useEffect(() => {
+    if (!initialData || !Array.isArray(initialData.elements)) return;
+    for (const el of initialData.elements) {
+      if (el.type !== 'text' || typeof el.text !== 'string') continue;
+      if (/^@ping\b/im.test(el.text)) pingSeenRef.current.add(el.id);
+      if (/^@pin\b/im.test(el.text))  pinSeenRef.current.add(el.id);
+    }
+  }, [initialData]);
+
   async function refreshVersions() {
     try {
       const res = await fetch('/versions');
@@ -85,13 +97,16 @@ function App() {
       type: 'excalidraw', version: 2, source: 'browser',
       elements, appState, files,
     });
-    // drawn-ping detection: fire ping event when new @ping text element appears
+    // drawn-ping detection: fire ping event when a NEW user-authored @ping
+    // text element appears. AI-sourced text and already-seen ids are skipped.
+    const isAi = (el) => el.customData && el.customData.source === 'ai';
     const seen = pingSeenRef.current;
     const currentIds = new Set();
     for (const el of elements) {
       if (el.type !== 'text' || typeof el.text !== 'string') continue;
       if (!/^@ping\b/im.test(el.text)) continue;
       currentIds.add(el.id);
+      if (isAi(el)) { seen.add(el.id); continue; }
       if (!seen.has(el.id)) {
         seen.add(el.id);
         fetch('/events', {
@@ -100,7 +115,6 @@ function App() {
         });
       }
     }
-    // drop ids for elements that no longer exist so re-adding re-triggers
     for (const id of seen) if (!currentIds.has(id)) seen.delete(id);
 
     // drawn-pin detection: mirror of drawn-ping but for @pin elements
@@ -110,6 +124,7 @@ function App() {
       if (el.type !== 'text' || typeof el.text !== 'string') continue;
       if (!/^@pin\b/im.test(el.text)) continue;
       pinCurrent.add(el.id);
+      if (isAi(el)) { pinSeen.add(el.id); continue; }
       if (!pinSeen.has(el.id)) {
         pinSeen.add(el.id);
         fetch('/events', {
