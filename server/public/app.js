@@ -57,6 +57,12 @@ function App() {
             collaborators: [],
           },
         });
+        // updateScene doesn't always re-measure free text on load — force a
+        // refresh so new sticky / panel text renders immediately without
+        // requiring a page reload.
+        if (typeof apiRef.current.refresh === 'function') {
+          apiRef.current.refresh();
+        }
       }
       refreshVersions();
       // Fan the event out to listeners (ping-thinking indicator, etc.)

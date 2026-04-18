@@ -46,6 +46,27 @@ test('buildSticky text width fits inside rectangle with padding', () => {
   assert.ok(text.x + text.width <= rect.x + rect.width - 8);
 });
 
+test('buildSticky wraps long single-line text into multiple lines', () => {
+  const longText = 'This is a long single line sentence that should wrap into multiple lines once we insert explicit newlines';
+  const [rect, text] = buildSticky({ tone: 'question', text: longText });
+  const lines = text.text.split('\n');
+  assert.ok(lines.length >= 2, `expected wrap, got ${lines.length} lines`);
+  for (const ln of lines) {
+    assert.ok(ln.length <= 42 + 10, `line too long: ${ln.length} chars`);
+  }
+  // Rectangle height must grow to fit all wrapped lines.
+  assert.ok(rect.height >= lines.length * 20);
+});
+
+test('buildSticky hard-breaks a single word longer than the wrap width', () => {
+  const [, text] = buildSticky({
+    tone: 'neutral',
+    text: 'supercalifragilisticexpialidociousaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  });
+  const lines = text.text.split('\n');
+  assert.ok(lines.length >= 2);
+});
+
 import { buildMindNode } from '../lib/scene.js';
 
 test('buildMindNode emits ellipse + text + arrow when parent given', () => {
