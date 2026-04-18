@@ -14,13 +14,13 @@ shapes (stickies, mind-nodes, annotations, panels) on the same canvas.
 User invokes: `/whiteboard-brainstorm [--manual] <mode> [topic]`
 Modes: `preimpl`, `general`, `mindmap`.
 
-**Default behavior is auto-poll:** after each turn, Claude self-schedules
-a wake-up via `ScheduleWakeup(delaySeconds: 60)` and re-reads
-`events.jsonl`. The user does NOT need to press Enter in the terminal
-— they only need to ping from the browser.
+**Default behavior is auto-poll:** after each turn, Claude issues a
+blocking `Bash` command that polls `events.jsonl` for the next ping
+(see the "Auto-poll" section below for the exact loop). The user does
+NOT need to press Enter in the terminal — only ping from the browser.
 
-Pass `--manual` to opt out. Manual mode waits for the user to return to
-the terminal and press Enter between turns.
+Pass `--manual` to opt out. Manual mode waits for the user to return
+to the terminal and press Enter between turns.
 
 ## Storage model
 
@@ -71,8 +71,17 @@ coupling.
 
 1. **Check server alive.** If `<sessionDir>/.state/server-info` is missing
    or `<sessionDir>/.state/server-stopped` exists, restart the server.
-2. **Read events:** `cat <sessionDir>/.state/events.jsonl`. Empty? Treat
-   the user's terminal text as the ping message.
+2. **Atomically read + clear events:** copy the file to a tmp location
+   FIRST, then truncate. Guarantees pings that arrive during the turn
+   are not lost.
+   ```
+   EVT=/tmp/wbb-events-$$.jsonl
+   cp <sessionDir>/.state/events.jsonl "$EVT" 2>/dev/null || : > "$EVT"
+   : > <sessionDir>/.state/events.jsonl
+   cat "$EVT"
+   ```
+   Use the contents of `$EVT` for this turn; any ping that lands after
+   the copy remains in `events.jsonl` for the NEXT turn.
 
    The user can trigger with the `@ping` button OR a text element
    containing `@ping`. Both write to `events.jsonl`. Events with
@@ -101,29 +110,36 @@ coupling.
        <sessionDir>/latest.excalidraw.json \
        /tmp/ai-elements.json <turn> > /tmp/merged.json
    ```
-9. **Write a new version.** This updates both `board-v<turn>.excalidraw.json`
-   and `latest.excalidraw.json` in the session dir. The server's chokidar
-   watcher sees the change and broadcasts an SSE refresh:
+9. **Write a new version and notify the server.** The CLI updates both
+   `board-v<turn>.excalidraw.json` and `latest.excalidraw.json` in the
+   session dir. A follow-up `/notify-refresh` bypasses the server's
+   self-write suppression window so the browser always gets an SSE
+   refresh, even while the user is mid-edit:
    ```
    node <plugin>/bin/wbb.js write-version <slug> <turn> /tmp/merged.json
+   PORT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('<sessionDir>/.state/server-info','utf8')).port)")
+   curl -s -X POST "http://127.0.0.1:$PORT/notify-refresh" >/dev/null
    ```
-10. **Clear the events file** so the next turn starts clean:
-    ```
-    : > <sessionDir>/.state/events.jsonl
-    ```
-11. **Reply in terminal** with a one-line summary of the shapes you
+10. **Reply in terminal** with a one-line summary of the shapes you
     pushed. Remind the user the URL is still live and to ping again
     when ready. Do NOT auto-loop — wait for the next terminal turn.
 
 ### Auto-poll (default) — blocking Bash wait
 
-Unless `--manual` was passed, after step 11 of the turn loop, issue a
+Unless `--manual` was passed, after step 10 of the turn loop, issue a
 **blocking Bash command** that waits for the next ping event:
 
 ```bash
+PID=$(cat <sessionDir>/.state/server.pid 2>/dev/null)
 for i in $(seq 1 110); do
   [ -s <sessionDir>/.state/events.jsonl ] && break
   [ -f <sessionDir>/.state/server-stopped ] && echo SERVER_STOPPED && exit 0
+  # PID check catches silent crashes (SIGKILL, OOM) that bypass our
+  # uncaughtException handler and never write server-stopped.
+  if [ -n "$PID" ] && ! kill -0 "$PID" 2>/dev/null; then
+    echo SERVER_DEAD
+    exit 0
+  fi
   sleep 5
 done
 cat <sessionDir>/.state/events.jsonl

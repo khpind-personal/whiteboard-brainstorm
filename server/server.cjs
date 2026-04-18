@@ -159,6 +159,16 @@ async function main() {
     res.json({ ok: true });
   });
 
+  // Notify-refresh: call this after any out-of-band file write (e.g. the
+  // `wbb write-version` CLI) to guarantee a broadcast. The chokidar watcher
+  // suppresses broadcasts within SELF_WRITE_WINDOW_MS of a /state POST, which
+  // means CLI writes can be silently swallowed while the user is actively
+  // editing. This endpoint bypasses that guard.
+  app.post('/notify-refresh', (_req, res) => {
+    broadcast('refresh', { path: 'latest.excalidraw.json', source: 'cli' });
+    res.json({ ok: true });
+  });
+
   // History scrubber: list + fetch versioned boards from the session dir.
   function listVersionFiles() {
     if (!fs.existsSync(contentDir)) return [];
@@ -240,6 +250,9 @@ async function main() {
     }
   });
 
+  // In-flight map so rapid scrubber hovers don't spawn concurrent
+  // Playwright chromium processes for the same version number.
+  const thumbInFlight = new Map();
   app.get('/versions/:n/thumb', async (req, res) => {
     const n = Number(req.params.n);
     if (!Number.isFinite(n)) return res.status(400).json({ error: 'bad version' });
@@ -247,12 +260,21 @@ async function main() {
     if (!fs.existsSync(src)) return res.status(404).json({ error: 'version not found' });
     const out = path.join(thumbDir, `v${n}.png`);
     if (fs.existsSync(out)) return res.sendFile(out);
+
+    if (thumbInFlight.has(n)) {
+      try { await thumbInFlight.get(n); return res.sendFile(out); }
+      catch (err) { return res.status(500).json({ error: err.message }); }
+    }
+    const { exportSceneToPng } = await import('../lib/export.js');
+    const p = exportSceneToPng({ sceneFile: src, outPath: out });
+    thumbInFlight.set(n, p);
     try {
-      const { exportSceneToPng } = await import('../lib/export.js');
-      await exportSceneToPng({ sceneFile: src, outPath: out });
+      await p;
       res.sendFile(out);
     } catch (err) {
       res.status(500).json({ error: err.message });
+    } finally {
+      thumbInFlight.delete(n);
     }
   });
 
@@ -275,6 +297,23 @@ async function main() {
   process.on('SIGTERM', () => {
     fs.writeFileSync(path.join(stateDir, 'server-stopped'), 'sigterm\n');
     server.close(() => process.exit(0));
+  });
+  // Unhandled errors used to leave the poll-loop hanging for 9 minutes with
+  // no diagnostic. Mark the server as stopped so SKILL.md's blocking wait
+  // exits immediately and the user sees the crash.
+  process.on('uncaughtException', (err) => {
+    try {
+      fs.writeFileSync(path.join(stateDir, 'server-stopped'),
+                       `uncaught: ${err && err.stack || err}\n`);
+    } catch (_) { /* best effort */ }
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (err) => {
+    try {
+      fs.writeFileSync(path.join(stateDir, 'server-stopped'),
+                       `unhandled-rejection: ${err && err.stack || err}\n`);
+    } catch (_) { /* best effort */ }
+    process.exit(1);
   });
 }
 main().catch(err => { console.error(err); process.exit(1); });

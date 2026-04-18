@@ -10,7 +10,7 @@ function App() {
   const [initialData, setInitialData] = useState(null);
   const pingSeenRef = useRef(new Set());
   const pinSeenRef = useRef(new Set());
-  const wrappedRef = useRef(new Set());   // ids of user text elements already auto-wrapped
+  const wrappedLenRef = useRef(new Map()); // id → last-wrapped text length (re-wrap once delta exceeds threshold)
   const prevAiIdsRef = useRef(new Set()); // snapshot BEFORE each SSE refresh for stagger diff
   const staggerRunningRef = useRef(false);
   const [picker, setPicker] = useState(null); // null | [{id,name,path}]
@@ -134,17 +134,23 @@ function App() {
     // re-wrapping it so the user can still resize manually.
     const WRAP_PX = 500;
     const WRAP_CHARS = 60;
+    const WRAP_DELTA_THRESHOLD = 5;  // re-wrap once text grows beyond +5 chars
     const toUpdate = [];
     for (const el of elements) {
       if (el.type !== 'text') continue;
       if (isAi(el)) continue;
       if (el.containerId) continue;           // bound text — container handles it
-      if (wrappedRef.current.has(el.id)) continue;
       if (typeof el.width !== 'number' || el.width <= WRAP_PX) continue;
       if (typeof el.text !== 'string' || el.text.length < WRAP_CHARS) continue;
 
+      const lastLen = wrappedLenRef.current.get(el.id) ?? 0;
+      if (Math.abs(el.text.length - lastLen) < WRAP_DELTA_THRESHOLD) continue;
+
       const wrapped = wrapTextString(el.text, WRAP_CHARS);
-      if (wrapped === el.text) continue;
+      if (wrapped === el.text) {
+        wrappedLenRef.current.set(el.id, el.text.length);
+        continue;
+      }
       const lines = wrapped.split('\n').length;
       const lh = Math.round((el.fontSize || 20) * 1.4);
       toUpdate.push({
@@ -155,7 +161,7 @@ function App() {
         height: lines * lh,
         autoResize: false,
       });
-      wrappedRef.current.add(el.id);
+      wrappedLenRef.current.set(el.id, wrapped.length);
     }
     if (toUpdate.length > 0 && apiRef.current) {
       const byId = new Map(toUpdate.map(e => [e.id, e]));

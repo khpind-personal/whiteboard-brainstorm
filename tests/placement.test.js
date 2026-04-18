@@ -59,9 +59,11 @@ test('computeDropZone anchors to right edge of user bbox', () => {
   assert.equal(z.y, 80);
 });
 
-test('computeDropZone clamps x below MAX_X even for far-out elements', () => {
+test('computeDropZone anchors at right edge even for far-out elements', () => {
+  // Clamping was removed: AI elements should follow user content, not snap
+  // back and overlap it. placeNear provides its own fallback for extremes.
   const z = computeDropZone([{ x: 10000, y: 0, width: 100, height: 100 }]);
-  assert.ok(z.x <= 2400, `drop-zone x ${z.x} should be clamped below 2400`);
+  assert.equal(z.x, 10100);
 });
 
 test('placeNear returns fallback when candidate x exceeds MAX_X', () => {
