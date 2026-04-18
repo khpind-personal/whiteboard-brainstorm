@@ -189,7 +189,7 @@ function App() {
   async function previewVersion(n) {
     const res = await fetch('/versions/' + n);
     if (!res.ok) return;
-    const scene = await res.json();
+    const scene = normalizeScene(await res.json());
     if (apiRef.current) {
       const currentApp = apiRef.current.getAppState();
       apiRef.current.updateScene({
@@ -302,11 +302,34 @@ function flashPingSent(btn) {
   }, 2000);
 }
 
+// Excalidraw sometimes persists bound-text elements with height: null
+// (and occasionally width: null); reloading that scene renders the text
+// invisible. Fill in sane defaults so rendering works before Excalidraw
+// gets a chance to re-measure.
+function normalizeScene(scene) {
+  if (!scene || !Array.isArray(scene.elements)) return scene;
+  for (const el of scene.elements) {
+    if (el.type !== 'text') continue;
+    if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
+      const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
+      const lineHeight = Math.round(fontSize * 1.4);
+      const lines = typeof el.text === 'string'
+        ? Math.max(1, el.text.split('\n').length)
+        : 1;
+      el.height = lines * lineHeight;
+    }
+    if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
+      el.width = 200;
+    }
+  }
+  return scene;
+}
+
 async function fetchLatest() {
   try {
     const res = await fetch('/content/latest.excalidraw.json', { cache: 'no-store' });
     if (!res.ok) return { elements: [], appState: { viewBackgroundColor: '#ffffff' }, files: {} };
-    return await res.json();
+    return normalizeScene(await res.json());
   } catch (_) { return null; }
 }
 
