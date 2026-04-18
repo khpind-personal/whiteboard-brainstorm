@@ -15,6 +15,13 @@
     }
     .ping-btn:hover { filter: brightness(0.96); }
     .ping-btn[disabled] { cursor: progress; opacity: 0.9; }
+    .ping-hint {
+      font: 500 11px/1 system-ui;
+      opacity: 0.55;
+      border-left: 1px solid rgba(30, 30, 30, 0.25);
+      padding-left: 8px;
+      margin-left: 2px;
+    }
     .ping-dot {
       width: 10px; height: 10px; border-radius: 50%;
       background: #1e1e1e; display: inline-block;
@@ -123,9 +130,10 @@
 </head>
 <body>
   <div id="root"></div>
-  <button id="ping" class="ping-btn" aria-label="Ping the AI">
+  <button id="ping" class="ping-btn" aria-label="Ping the AI" title="Ping the AI (Cmd/Ctrl+Enter)">
     <span class="ping-dot" aria-hidden="true"></span>
     <span class="ping-label">@ping</span>
+    <span class="ping-hint" aria-hidden="true">⌘↵</span>
   </button>
   <div id="cursor-trail" class="cursor-trail" aria-hidden="true"></div>
   <div id="thumb-popover" class="thumb-popover" aria-hidden="true"></div>

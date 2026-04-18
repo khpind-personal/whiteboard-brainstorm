@@ -225,7 +225,8 @@ function App() {
 
   useEffect(() => {
     const btn = document.getElementById('ping');
-    btn.addEventListener('click', async () => {
+
+    async function firePing() {
       if (thinkingRef.current) return; // already waiting on AI
       // Commit any in-progress text edit before posting so it isn't lost
       if (document.activeElement && typeof document.activeElement.blur === 'function') {
@@ -241,7 +242,31 @@ function App() {
         body: JSON.stringify({ type: 'ping', selectedIds: selected }),
       });
       enterThinking(btn);
-    });
+    }
+
+    btn.addEventListener('click', firePing);
+
+    // Keyboard shortcut: Cmd+Enter (Mac) / Ctrl+Enter (Win/Linux) fires the
+    // ping. Excalidraw itself uses Cmd+Enter to commit an in-progress text
+    // edit, so we only fire when we're NOT inside an input/textarea — the
+    // first Cmd+Enter commits the edit, the second (after user releases and
+    // presses again) fires the ping.
+    function onKeydown(e) {
+      if (e.key !== 'Enter') return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const active = document.activeElement;
+      const editing = active && (active.tagName === 'INPUT' ||
+                                  active.tagName === 'TEXTAREA' ||
+                                  active.isContentEditable);
+      if (editing) return;
+      e.preventDefault();
+      firePing();
+    }
+    window.addEventListener('keydown', onKeydown);
+    return () => {
+      btn.removeEventListener('click', firePing);
+      window.removeEventListener('keydown', onKeydown);
+    };
   }, []);
 
   // Hook into the same SSE listener registered above — when any refresh
