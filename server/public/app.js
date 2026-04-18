@@ -11,9 +11,15 @@ function App() {
   const pingSeenRef = useRef(new Set());
   const pinSeenRef = useRef(new Set());
   const wrappedRef = useRef(new Set());   // ids of user text elements already auto-wrapped
+  const prevAiIdsRef = useRef(new Set()); // snapshot BEFORE each SSE refresh for stagger diff
+  const staggerRunningRef = useRef(false);
   const [picker, setPicker] = useState(null); // null | [{id,name,path}]
   const [versions, setVersions] = useState([]);         // [{n, filename, mtime}]
   const [previewN, setPreviewN] = useState(null);       // null = live; number = previewing
+  const [tidyOpen, setTidyOpen] = useState(false);
+  const [tidyAlgo, setTidyAlgo] = useState('column');   // 'column' | 'grid'
+  const [tidyScope, setTidyScope] = useState('ai');     // 'ai' | 'all'
+  const [hasArchived, setHasArchived] = useState(false);
 
   useEffect(() => { refreshVersions(); }, []);
 
@@ -40,6 +46,14 @@ function App() {
     // SSE refresh wired unconditionally — board may be opened without ?mode=
     const es = new EventSource('/events-stream');
     es.addEventListener('refresh', async () => {
+      // Snapshot AI ids BEFORE updating the scene so stagger can diff.
+      if (apiRef.current) {
+        prevAiIdsRef.current = new Set(
+          apiRef.current.getSceneElements()
+            .filter(e => e.customData && e.customData.source === 'ai' && !e.isDeleted)
+            .map(e => e.id),
+        );
+      }
       const scene = await fetchLatest();
       if (apiRef.current && scene) {
         // Preserve viewport (scroll + zoom) + editing state so an AI refresh
@@ -68,6 +82,14 @@ function App() {
       refreshVersions();
       // Fan the event out to listeners (ping-thinking indicator, etc.)
       window.dispatchEvent(new CustomEvent('wbb-scene-refresh'));
+      // Stagger-reveal only fires if user was actively thinking (ping in flight).
+      if (thinkingRef.current && apiRef.current) {
+        const newAi = computeNewAiElements(
+          prevAiIdsRef.current, apiRef.current.getSceneElements());
+        if (newAi.length > 0) {
+          await staggerReveal(newAi);
+        }
+      }
     });
 
     const mode = new URLSearchParams(location.search).get('mode');
@@ -283,6 +305,43 @@ function App() {
     if (trail) trail.classList.remove('active');
   }
 
+  // Sweep the cursor-trail across each new AI element's center with a 150ms
+  // stagger so the user sees AI placing elements in sequence rather than
+  // snapping in all at once. Cap at STAGGER_MAX so very large restructures
+  // don't tie up the UI; remainder jumps to the last center without delay.
+  async function staggerReveal(newEls) {
+    if (staggerRunningRef.current) return;
+    if (!newEls || newEls.length === 0) return;
+    if (!apiRef.current) return;
+    const trail = document.getElementById('cursor-trail');
+    if (!trail) return;
+    staggerRunningRef.current = true;
+    trail.classList.add('active');
+    const STAGGER_MAX = 8;
+    const app = apiRef.current.getAppState();
+    const zoom = (app.zoom && app.zoom.value) || 1;
+    try {
+      const take = newEls.slice(0, STAGGER_MAX);
+      for (const el of take) {
+        const cx = el.x + (el.width  || 0) / 2;
+        const cy = el.y + (el.height || 0) / 2;
+        trail.style.left = ((cx - app.scrollX) * zoom) + 'px';
+        trail.style.top  = ((cy - app.scrollY) * zoom) + 'px';
+        await new Promise(r => setTimeout(r, 150));
+      }
+      // Jump to the final element without another delay.
+      if (newEls.length > STAGGER_MAX) {
+        const last = newEls[newEls.length - 1];
+        const cx = last.x + (last.width  || 0) / 2;
+        const cy = last.y + (last.height || 0) / 2;
+        trail.style.left = ((cx - app.scrollX) * zoom) + 'px';
+        trail.style.top  = ((cy - app.scrollY) * zoom) + 'px';
+      }
+    } finally {
+      staggerRunningRef.current = false;
+    }
+  }
+
   async function previewVersion(n) {
     const res = await fetch('/versions/' + n);
     if (!res.ok) return;
@@ -396,6 +455,37 @@ function App() {
 
   if (!initialData) return createElement('div', { style: { padding: 20 } }, 'Loading\u2026');
 
+  async function applyTidy() {
+    const body = { algo: tidyAlgo, scope: tidyScope };
+    try {
+      await fetch('/arrange', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } finally {
+      setTidyOpen(false);
+    }
+  }
+
+  async function sweepArchive() {
+    await fetch('/sweep-archive', { method: 'POST' });
+  }
+
+  // Track presence of archived elements so the Sweep button can conditionally
+  // render. Updated on every scene refresh event.
+  useEffect(() => {
+    function recompute() {
+      if (!apiRef.current) return;
+      const els = apiRef.current.getSceneElements();
+      setHasArchived(els.some(e =>
+        !e.isDeleted && e.customData && e.customData.archived));
+    }
+    recompute();
+    window.addEventListener('wbb-scene-refresh', recompute);
+    return () => window.removeEventListener('wbb-scene-refresh', recompute);
+  }, [initialData]);
+
   const scrubberChildren = [
     createElement('span', { className: 'scrubber-label', key: 'lbl' }, 'History:'),
     ...versions.map(v => createElement('button', {
@@ -411,6 +501,19 @@ function App() {
       className: 'scrubber-pill' + (previewN === null ? ' live' : ''),
       onClick: backToLive,
     }, 'live'),
+    createElement('button', {
+      key: 'tidy',
+      className: 'scrubber-pill',
+      onClick: () => setTidyOpen(v => !v),
+      title: 'Auto-arrange elements',
+    }, 'Tidy'),
+    ...(hasArchived ? [createElement('button', {
+      key: 'sweep',
+      className: 'scrubber-pill',
+      onClick: sweepArchive,
+      title: 'Remove archived (dimmed) AI elements',
+      style: { background: '#FFD6D6' },
+    }, 'Sweep')] : []),
   ];
 
   const pieces = [
@@ -420,6 +523,35 @@ function App() {
     pieces.push(createElement('div', { className: 'preview-banner', key: 'banner' },
       createElement('span', { key: 't' }, 'Previewing v' + previewN + ' \u2014 read-only'),
       createElement('button', { key: 'b', onClick: backToLive }, 'Back to live'),
+    ));
+  }
+  if (tidyOpen) {
+    pieces.push(createElement('div', { className: 'tidy-menu', key: 'tidy-menu' },
+      createElement('div', { className: 'row', key: 'algo' },
+        createElement('label', null, 'Algo'),
+        createElement('button', {
+          className: tidyAlgo === 'column' ? 'on' : '',
+          onClick: () => setTidyAlgo('column'),
+        }, 'Column'),
+        createElement('button', {
+          className: tidyAlgo === 'grid' ? 'on' : '',
+          onClick: () => setTidyAlgo('grid'),
+        }, 'Grid'),
+      ),
+      createElement('div', { className: 'row', key: 'scope' },
+        createElement('label', null, 'Scope'),
+        createElement('button', {
+          className: tidyScope === 'ai' ? 'on' : '',
+          onClick: () => setTidyScope('ai'),
+        }, 'AI only'),
+        createElement('button', {
+          className: tidyScope === 'all' ? 'on' : '',
+          onClick: () => setTidyScope('all'),
+        }, 'All'),
+      ),
+      createElement('button', {
+        className: 'apply', key: 'apply', onClick: applyTidy,
+      }, 'Apply'),
     ));
   }
   pieces.push(createElement(Excalidraw, {
@@ -471,6 +603,27 @@ function normalizeScene(scene) {
     }
   }
   return scene;
+}
+
+// Pure helper: given a set of prior AI element ids and the current scene,
+// return the elements that are newly AI-authored and visually foregrounded.
+// Excludes deleted, bound text (containerId), and archived elements.
+function computeNewAiElements(prevAiIds, currentElements) {
+  const prev = prevAiIds instanceof Set ? prevAiIds : new Set(prevAiIds || []);
+  return (currentElements || []).filter(e => {
+    if (!e) return false;
+    if (e.isDeleted) return false;
+    if (!e.customData || e.customData.source !== 'ai') return false;
+    if (e.customData.archived) return false;
+    if (e.containerId) return false;
+    if (!(e.type === 'rectangle' || e.type === 'ellipse' || e.type === 'text')) return false;
+    if (prev.has(e.id)) return false;
+    return true;
+  });
+}
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.__wbb_computeNewAiElements = computeNewAiElements;
 }
 
 function wrapTextString(text, chars) {

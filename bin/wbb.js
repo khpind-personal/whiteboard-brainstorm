@@ -53,6 +53,11 @@ wbb <subcommand> [args]
   branch <src-slug> <dst-topic> [--root <path>]
                         fork a session: copy versions to a new slug, fresh
                         runtime state, empty events
+  arrange <slug> [--algo column|grid] [--scope ai|all] [--start-x N]
+          [--start-y N] [--gap-x N] [--gap-y N] [--cols N] [--max-height N]
+          [--root <path>]
+                        reflow AI (or all) elements into a tidy column/grid
+                        and save as a new board version
 `);
 }
 
@@ -132,6 +137,11 @@ try {
         }
         if (spec.rewriteOf && built.length > 0) {
           built[0].customData = { ...(built[0].customData ?? {}), rewriteOf: spec.rewriteOf };
+        }
+        if (spec.op) {
+          for (const el of built) {
+            el.customData = { ...(el.customData ?? {}), op: spec.op };
+          }
         }
         out.push(...built);
 
@@ -249,6 +259,27 @@ try {
       if (!srcSlug || !dstTopic) throw new Error('branch requires <src-slug> <dst-topic>');
       const { branchSession } = await import('../lib/store.js');
       const r = branchSession({ rootArg, srcSlug, dstTopic });
+      process.stdout.write(JSON.stringify(r));
+      break;
+    }
+    case 'arrange': {
+      const args = [...rest];
+      const rootArg = takeFlag(args, 'root');
+      const algo = takeFlag(args, 'algo') || 'column';
+      const scope = takeFlag(args, 'scope') || 'ai';
+      const startX = Number(takeFlag(args, 'start-x')) || undefined;
+      const startY = Number(takeFlag(args, 'start-y')) || undefined;
+      const gapX = Number(takeFlag(args, 'gap-x')) || undefined;
+      const gapY = Number(takeFlag(args, 'gap-y')) || undefined;
+      const cols = Number(takeFlag(args, 'cols')) || undefined;
+      const maxHeight = Number(takeFlag(args, 'max-height')) || undefined;
+      const [slug] = args;
+      if (!slug) throw new Error('arrange requires <slug>');
+      const { arrangeSession } = await import('../lib/arrange.js');
+      const r = arrangeSession({
+        rootArg, slug, algo, scope,
+        startX, startY, gapX, gapY, cols, maxHeight,
+      });
       process.stdout.write(JSON.stringify(r));
       break;
     }

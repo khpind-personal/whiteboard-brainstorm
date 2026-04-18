@@ -188,6 +188,58 @@ async function main() {
   // <sessionDir>/.state/thumbs/v<N>.png so first hover is slow, rest are fast.
   const thumbDir = path.join(stateDir, 'thumbs');
   fs.mkdirSync(thumbDir, { recursive: true });
+  // Sweep archived: mark every element with customData.archived=true as
+  // isDeleted. Writes a new version so the user can revert via the scrubber.
+  app.post('/sweep-archive', (req, res) => {
+    try {
+      const sceneFile = path.join(contentDir, 'latest.excalidraw.json');
+      if (!fs.existsSync(sceneFile)) return res.status(404).json({ error: 'no scene' });
+      const scene = JSON.parse(fs.readFileSync(sceneFile, 'utf8'));
+      let swept = 0;
+      const newElements = (scene.elements || []).map(el => {
+        if (el.customData && el.customData.archived && !el.isDeleted) {
+          swept++;
+          return { ...el, isDeleted: true };
+        }
+        return el;
+      });
+      if (swept === 0) return res.json({ swept: 0, turn: null });
+      // Find next version number.
+      const ns = fs.readdirSync(contentDir)
+        .map(f => (f.match(/^board-v(\d+)\.excalidraw\.json$/) || [])[1])
+        .filter(Boolean).map(Number);
+      const turn = (ns.length > 0 ? Math.max(...ns) : 0) + 1;
+      const out = { ...scene, elements: newElements };
+      fs.writeFileSync(path.join(contentDir, `board-v${turn}.excalidraw.json`),
+                       JSON.stringify(out, null, 2));
+      fs.writeFileSync(sceneFile, JSON.stringify(out, null, 2));
+      broadcast('refresh', { path: 'latest.excalidraw.json', source: 'sweep-archive' });
+      res.json({ swept, turn });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Auto-arrange: reflow elements into a tidy column/grid. In-process to
+  // keep latency low and avoid spawn overhead. Writes a new version so the
+  // user can revert via the scrubber.
+  app.post('/arrange', async (req, res) => {
+    try {
+      const { algo, scope, startX, startY, gapX, gapY, cols, maxHeight } = req.body || {};
+      const { arrangeSession } = await import('../lib/arrange.js');
+      const r = arrangeSession({
+        sessionDirOverride: sessionDir,
+        algo: algo || 'column',
+        scope: scope || 'ai',
+        startX, startY, gapX, gapY, cols, maxHeight,
+      });
+      broadcast('refresh', { path: 'latest.excalidraw.json', source: 'arrange' });
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/versions/:n/thumb', async (req, res) => {
     const n = Number(req.params.n);
     if (!Number.isFinite(n)) return res.status(400).json({ error: 'bad version' });
