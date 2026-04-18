@@ -1,7 +1,26 @@
+# Dependencies
 node_modules/
-.superpowers/
-_state/
-*.log
+
+# Test + build artifacts
 test-results/
 playwright-report/
 tests/fixtures/tmp/
+
+# Runtime state (per-session, gitignored intentionally)
+_state/
+.state/
+**/.state/
+
+# Logs
+*.log
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+.idea/
+
+# Vendored Excalidraw bundle — fetched on install
+server/public/vendor/
+
+# Legacy
+.superpowers/

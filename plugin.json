@@ -1,8 +1,9 @@
 {
   "name": "whiteboard-brainstorm",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0-rc.6",
   "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas with Claude.",
   "license": "MIT",
   "skills": ["skills/whiteboard-brainstorm"],
-  "bin": { "wbb": "bin/wbb.js" }
+  "bin": { "wbb": "bin/wbb.js" },
+  "homepage": "https://github.com/YOUR_USER/whiteboard-brainstorm"
 }
