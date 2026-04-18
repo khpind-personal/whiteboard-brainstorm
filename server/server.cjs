@@ -235,6 +235,42 @@ async function main() {
     }
   });
 
+  // Restore-archive: reverse the last restructure fade. Every element with
+  // customData.archived gets its opacity + stroke restored and the archive
+  // flags dropped. Writes a new version so the user has scrubber undo of
+  // the restore itself.
+  app.post('/restore-archive', async (req, res) => {
+    try {
+      const sceneFile = path.join(contentDir, 'latest.excalidraw.json');
+      if (!fs.existsSync(sceneFile)) return res.status(404).json({ error: 'no scene' });
+      const scene = JSON.parse(fs.readFileSync(sceneFile, 'utf8'));
+      let restored = 0;
+      const newElements = (scene.elements || []).map(el => {
+        if (el.customData && el.customData.archived && !el.isDeleted) {
+          restored++;
+          const { archived, archivedAt, ...restCustom } = el.customData;
+          return {
+            ...el,
+            opacity: 100,
+            strokeStyle: 'solid',
+            customData: restCustom,
+          };
+        }
+        return el;
+      });
+      if (restored === 0) return res.json({ restored: 0, turn: null });
+      const out = { ...scene, elements: newElements };
+      const { allocateTurn } = await import('../lib/arrange.js');
+      const { turn, path: versionPath } = allocateTurn(contentDir);
+      fs.writeFileSync(versionPath, JSON.stringify(out, null, 2));
+      fs.writeFileSync(sceneFile, JSON.stringify(out, null, 2));
+      broadcast('refresh', { path: 'latest.excalidraw.json', source: 'restore-archive' });
+      res.json({ restored, turn });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Auto-arrange: reflow elements into a tidy column/grid. In-process to
   // keep latency low and avoid spawn overhead. Writes a new version so the
   // user can revert via the scrubber.

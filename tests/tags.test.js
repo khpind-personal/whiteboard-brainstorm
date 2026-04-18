@@ -4,6 +4,21 @@ import { parseTags, TAG_NAMES } from '../lib/tags.js';
 
 const scene = (elements) => ({ type: 'excalidraw', version: 2, elements, appState: {}, files: {} });
 
+test('parseTags recognizes @drop as a drop-zone anchor', () => {
+  const els = [
+    { id: 'a', type: 'text', x: 100, y: 200, width: 80, height: 20,
+      text: '@drop here', originalText: '@drop here',
+      seed: 1, versionNonce: 1 },
+    { id: 'b', type: 'text', x: 0, y: 0, width: 40, height: 20,
+      text: '@idea seed', originalText: '@idea seed',
+      seed: 1, versionNonce: 1 },
+  ];
+  const tags = parseTags(scene(els));
+  assert.equal(tags.get('drop').length, 1);
+  assert.equal(tags.get('drop')[0].elId, 'a');
+  assert.equal(tags.get('drop')[0].text, 'here');
+});
+
 test('parseTags recognizes @idea @problem @q @pin @rewrite @ping', () => {
   const els = TAG_NAMES.map((tag, i) => ({
     id: `e${i}`, type: 'text', x: i * 10, y: 0, width: 100, height: 20,

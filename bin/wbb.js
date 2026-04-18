@@ -92,7 +92,15 @@ try {
       // anchors. If `near` points to an AI element, fall back to the drop
       // zone computed from user elements only.
       const userOnly = userElements.filter(isUserAuthored);
-      const dropZone = computeDropZone(userOnly);
+      // User can drop a `@drop` text anywhere on the canvas to pin the AI
+      // drop zone there; takes precedence over computed user-bbox anchor.
+      const dropAnchor = userOnly.find(el =>
+        el.type === 'text' && typeof el.text === 'string' &&
+        /^@drop\b/im.test(el.text));
+      const dropZone = dropAnchor
+        ? { x: dropAnchor.x, y: dropAnchor.y,
+            width: dropAnchor.width || 1, height: dropAnchor.height || 1 }
+        : computeDropZone(userOnly);
 
       const specs = JSON.parse(readStdin());
       const out = [];

@@ -20,6 +20,7 @@ function App() {
   const [tidyAlgo, setTidyAlgo] = useState('column');   // 'column' | 'grid'
   const [tidyScope, setTidyScope] = useState('ai');     // 'ai' | 'all'
   const [hasArchived, setHasArchived] = useState(false);
+  const hasArchivedRef = useRef(false);
 
   useEffect(() => { refreshVersions(); }, []);
 
@@ -251,16 +252,28 @@ function App() {
     // edit, so we only fire when we're NOT inside an input/textarea — the
     // first Cmd+Enter commits the edit, the second (after user releases and
     // presses again) fires the ping.
-    function onKeydown(e) {
-      if (e.key !== 'Enter') return;
-      if (!(e.metaKey || e.ctrlKey)) return;
+    function isEditing() {
       const active = document.activeElement;
-      const editing = active && (active.tagName === 'INPUT' ||
-                                  active.tagName === 'TEXTAREA' ||
-                                  active.isContentEditable);
-      if (editing) return;
-      e.preventDefault();
-      firePing();
+      return active && (active.tagName === 'INPUT' ||
+                        active.tagName === 'TEXTAREA' ||
+                        active.isContentEditable);
+    }
+
+    function onKeydown(e) {
+      if (isEditing()) return;
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === 'Enter') { e.preventDefault(); firePing(); return; }
+      }
+      // Unmodified letter shortcuts — only outside text editing.
+      // T opens Tidy menu, S triggers Sweep when archive is present.
+      if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        setTidyOpen(v => !v);
+      } else if ((e.key === 's' || e.key === 'S') && hasArchivedRef.current) {
+        e.preventDefault();
+        sweepArchive();
+      }
     }
     window.addEventListener('keydown', onKeydown);
     return () => {
@@ -509,8 +522,10 @@ function App() {
     function recompute() {
       if (!apiRef.current) return;
       const els = apiRef.current.getSceneElements();
-      setHasArchived(els.some(e =>
-        !e.isDeleted && e.customData && e.customData.archived));
+      const has = els.some(e =>
+        !e.isDeleted && e.customData && e.customData.archived);
+      hasArchivedRef.current = has;
+      setHasArchived(has);
     }
     recompute();
     window.addEventListener('wbb-scene-refresh', recompute);
@@ -536,6 +551,10 @@ function App() {
     await fetch('/sweep-archive', { method: 'POST' });
   }
 
+  async function restoreArchive() {
+    await fetch('/restore-archive', { method: 'POST' });
+  }
+
   const scrubberChildren = [
     createElement('span', { className: 'scrubber-label', key: 'lbl' }, 'History:'),
     ...versions.map(v => createElement('button', {
@@ -557,13 +576,22 @@ function App() {
       onClick: () => setTidyOpen(v => !v),
       title: 'Auto-arrange elements',
     }, 'Tidy'),
-    ...(hasArchived ? [createElement('button', {
-      key: 'sweep',
-      className: 'scrubber-pill',
-      onClick: sweepArchive,
-      title: 'Remove archived (dimmed) AI elements',
-      style: { background: '#FFD6D6' },
-    }, 'Sweep')] : []),
+    ...(hasArchived ? [
+      createElement('button', {
+        key: 'undo-dim',
+        className: 'scrubber-pill',
+        onClick: restoreArchive,
+        title: 'Restore dimmed AI elements back to bright (Undo restructure)',
+        style: { background: '#D6E4FF' },
+      }, 'Undo dim'),
+      createElement('button', {
+        key: 'sweep',
+        className: 'scrubber-pill',
+        onClick: sweepArchive,
+        title: 'Remove archived (dimmed) AI elements',
+        style: { background: '#FFD6D6' },
+      }, 'Sweep'),
+    ] : []),
   ];
 
   const pieces = [

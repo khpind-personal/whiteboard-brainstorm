@@ -165,6 +165,47 @@ If user passed `--manual`, skip the blocking wait and reply in terminal
 with a one-line summary + "press Enter to check for new pings". Wait for
 the user to return and press Enter to trigger the next turn.
 
+### `/loop` wrapper (rarely needed now)
+
+Before v0.4 the skill required `/loop /whiteboard-brainstorm ...` plus
+`ScheduleWakeup` to poll events without user input. The blocking Bash
+loop above supersedes that for almost all cases. `/loop` is only useful
+when the user wants a broader polling behavior (e.g. multiple scheduled
+tasks interleaving the whiteboard turn). For a single brainstorm
+session, use plain `/whiteboard-brainstorm <mode>` — the blocking wait
+already makes it passive from the user's perspective.
+
+## Tags the user can draw
+
+| Tag prefix | Effect |
+|---|---|
+| `@idea <text>` | Marks a user idea. Picked up for mode-prompt context. |
+| `@problem <text>` | Pain point / constraint. |
+| `@q <text>` | Question for Claude. |
+| `@pin <text>` | Pinned marker (persists across turns). |
+| `@rewrite` on an AI element | Claude replaces that element next turn. |
+| `@ping` | Equivalent to clicking the button; also via Cmd/Ctrl+Enter. |
+| `@drop` | Pins the AI drop-zone at that text's position. |
+
+## Browser keyboard shortcuts
+
+- `Cmd+Enter` / `Ctrl+Enter` — ping the AI.
+- `T` — toggle the Tidy menu.
+- `S` — sweep archived (dimmed) AI elements.
+
+All letter shortcuts are suppressed while the user is editing text.
+
+## Scrubber + Tidy + Sweep
+
+- The scrubber pill row (top-right) lists every board version. Click a
+  pill to preview; click "live" to return.
+- **Tidy** → column/grid layout over AI or all elements. Writes a new
+  version for easy undo.
+- **Sweep** (appears only when archived elements exist, after an AI
+  restructure turn) → removes dimmed elements permanently.
+- **Undo dim** (also appears then) → restores archived elements to
+  their full-opacity state without deleting anything.
+
 ## End of session
 
 When the user says "done" / "finish" / closes the browser:
