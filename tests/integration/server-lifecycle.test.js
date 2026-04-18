@@ -69,6 +69,37 @@ test('POST /state writes latest.excalidraw.json in session dir', async () => {
   }
 });
 
+test('POST /state sanitizes null text heights from Excalidraw', async () => {
+  const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-sanitize-'));
+  const child = bootServer(sessionDir);
+  try {
+    await wait(1200);
+    const info = readServerInfo(sessionDir);
+    // Excalidraw sometimes serializes bound text with null height — this would
+    // render invisible on reload. Server should fill it in.
+    const scene = {
+      type: 'excalidraw', version: 2,
+      elements: [{
+        id: 't1', type: 'text', x: 0, y: 0, width: 200, height: null,
+        text: 'line one\nline two\nline three',
+        fontSize: 16, fontFamily: 2,
+      }],
+      appState: {}, files: {},
+    };
+    await fetch(info.url + '/state', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(scene),
+    });
+    const stored = JSON.parse(readFileSync(join(sessionDir, 'latest.excalidraw.json'), 'utf8'));
+    const t = stored.elements[0];
+    assert.ok(typeof t.height === 'number' && t.height > 0,
+      `expected sanitized height, got ${t.height}`);
+  } finally {
+    await stopAndCleanup(child, sessionDir);
+  }
+});
+
 test('POST /events appends to .state/events.jsonl', async () => {
   const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-evt-'));
   const child = bootServer(sessionDir);

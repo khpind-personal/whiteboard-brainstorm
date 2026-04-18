@@ -58,13 +58,36 @@ async function main() {
   app.use('/content', express.static(contentDir));
   app.get('/health', (req, res) => res.json({ ok: true }));
 
+  // Excalidraw sometimes serializes bound-text elements with height: null
+  // (and occasionally width: null). That makes the text render invisible on
+  // reload. Fill in reasonable defaults based on text content so the element
+  // has a valid bbox on disk.
+  function sanitizeScene(scene) {
+    if (!scene || !Array.isArray(scene.elements)) return scene;
+    for (const el of scene.elements) {
+      if (el.type !== 'text') continue;
+      if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
+        const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
+        const lineHeight = Math.round(fontSize * 1.4);
+        const lines = typeof el.text === 'string'
+          ? Math.max(1, el.text.split('\n').length)
+          : 1;
+        el.height = lines * lineHeight;
+      }
+      if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
+        el.width = 200;
+      }
+    }
+    return scene;
+  }
+
   // Suppress SSE echo of our own /state POST so user edits don't clobber
   // themselves. External writes (AI turn, /ai-write) still propagate.
   let lastSelfWrite = 0;
   const SELF_WRITE_WINDOW_MS = 800;
 
   app.post('/state', (req, res) => {
-    const scene = req.body;
+    const scene = sanitizeScene(req.body);
     lastSelfWrite = Date.now();
     fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
                      JSON.stringify(scene, null, 2));
@@ -129,7 +152,7 @@ async function main() {
 
   // AI-write endpoint: like /state but explicitly broadcasts refresh.
   app.post('/ai-write', (req, res) => {
-    const scene = req.body;
+    const scene = sanitizeScene(req.body);
     fs.writeFileSync(path.join(contentDir, 'latest.excalidraw.json'),
                      JSON.stringify(scene, null, 2));
     broadcast('refresh', { path: 'latest.excalidraw.json', source: 'ai' });

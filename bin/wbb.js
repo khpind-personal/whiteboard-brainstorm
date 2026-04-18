@@ -10,7 +10,7 @@ import {
   sessionDir, resolveRoot, DEFAULT_ROOT,
 } from '../lib/store.js';
 import { listTemplates, defaultTemplatePath } from '../lib/templates.js';
-import { placeNear } from '../lib/placement.js';
+import { placeNear, computeDropZone, isUserAuthored } from '../lib/placement.js';
 
 function readStdin() {
   return readFileSync(0, 'utf8');
@@ -77,21 +77,36 @@ try {
         : { elements: [] };
       const userElements = userScene.elements || [];
       const elemById = new Map(userElements.map(e => [e.id, e]));
+      // AI targets cascade drift (x grows each turn), so prefer user-authored
+      // anchors. If `near` points to an AI element, fall back to the drop
+      // zone computed from user elements only.
+      const userOnly = userElements.filter(isUserAuthored);
+      const dropZone = computeDropZone(userOnly);
 
       const specs = JSON.parse(readStdin());
       const out = [];
-      const blockers = userElements.map(e => ({
-        x: e.x, y: e.y, width: e.width, height: e.height,
-      }));
+      const blockers = userElements
+        .filter(e => !e.isDeleted
+          && typeof e.x === 'number' && typeof e.y === 'number'
+          && typeof e.width === 'number' && typeof e.height === 'number')
+        .map(e => ({
+          x: e.x, y: e.y, width: e.width, height: e.height,
+        }));
 
       for (const spec of specs) {
-        if (spec.near && elemById.has(spec.near)) {
-          const target = elemById.get(spec.near);
+        const target = spec.near ? elemById.get(spec.near) : null;
+        const targetIsUser = target && isUserAuthored(target);
+        if (target && targetIsUser) {
           const pt = placeNear(
             { x: target.x, y: target.y, width: target.width, height: target.height },
             blockers,
             { width: 260, height: 100 },
           );
+          spec.x = pt.x;
+          spec.y = pt.y;
+        } else if (spec.near || spec.x == null || spec.y == null) {
+          // No usable user target — anchor to the drop zone right of user content.
+          const pt = placeNear(dropZone, blockers, { width: 260, height: 100 });
           spec.x = pt.x;
           spec.y = pt.y;
         }
