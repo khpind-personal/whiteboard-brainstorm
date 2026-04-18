@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +32,29 @@ test('server writes server-info with url and port when it starts', async () => {
     assert.match(info.url, /^http:\/\/127\.0\.0\.1:\d+$/);
   } finally {
     await stopAndCleanup(child, sessionDir);
+  }
+});
+
+test('start script ignores stale server-info from previous runs', async () => {
+  const sessionDir = mkdtempSync(join(tmpdir(), 'wbb-start-script-'));
+  mkdirSync(join(sessionDir, '.state'), { recursive: true });
+  writeFileSync(join(sessionDir, '.state', 'server-info'),
+    JSON.stringify({ port: 59999, host: '127.0.0.1', url: 'http://127.0.0.1:59999', pid: 123 }));
+  writeFileSync(join(sessionDir, '.state', 'server-stopped'), 'old-stop\n');
+
+  try {
+    const out = execFileSync('server/start-board-server.sh', [sessionDir, '--idle-seconds', '5'],
+      { encoding: 'utf8' });
+    const info = JSON.parse(out);
+    assert.notEqual(info.pid, 123);
+    assert.notEqual(info.port, 59999);
+    assert.equal(existsSync(join(sessionDir, '.state', 'server-stopped')), false);
+    const res = await fetch(info.url + '/health');
+    assert.equal(res.status, 200);
+  } finally {
+    try { execFileSync('server/stop-board-server.sh', [sessionDir]); } catch {}
+    await wait(200);
+    rmSync(sessionDir, { recursive: true, force: true });
   }
 });
 

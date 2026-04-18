@@ -1,0 +1,44 @@
+{
+  "name": "whiteboard-brainstorm",
+  "version": "1.0.0-rc.6",
+  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas for Claude Code and Codex.",
+  "author": {
+    "name": "khpind-personal",
+    "url": "https://github.com/khpind-personal"
+  },
+  "homepage": "https://github.com/khpind-personal/whiteboard-brainstorm",
+  "repository": "https://github.com/khpind-personal/whiteboard-brainstorm",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "claude",
+    "codex",
+    "ai",
+    "brainstorming",
+    "whiteboard",
+    "excalidraw",
+    "canvas",
+    "mindmap",
+    "skill",
+    "plugin"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "whiteboard-brainstorm",
+    "shortDescription": "Visual brainstorming on a shared Excalidraw canvas.",
+    "longDescription": "Start a whiteboard session, share the canvas URL, and respond with stickies, mind-nodes, annotations, and panels on the same board.",
+    "developerName": "khpind-personal",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/khpind-personal/whiteboard-brainstorm",
+    "privacyPolicyURL": "https://github.com/khpind-personal/whiteboard-brainstorm#readme",
+    "termsOfServiceURL": "https://github.com/khpind-personal/whiteboard-brainstorm/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Use whiteboard-brainstorm when the user wants a visual brainstorming session on a shared canvas."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

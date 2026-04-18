@@ -1,10 +1,11 @@
 {
   "name": "whiteboard-brainstorm",
   "version": "1.0.0-rc.6",
-  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas with Claude. Draw, tag, and ping — Claude responds with stickies, mind-nodes, annotations, and panels on the same board.",
+  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas for Claude Code and Codex. Draw, tag, and ping — the assistant responds with stickies, mind-nodes, annotations, and panels on the same board.",
   "keywords": [
     "claude-code",
     "claude",
+    "codex",
     "ai",
     "brainstorming",
     "whiteboard",
@@ -23,8 +24,12 @@
     "wbb": "bin/wbb.js"
   },
   "files": [
+    ".claude-plugin/",
+    ".agents/",
+    "AGENTS.md",
     "bin/",
     "lib/",
+    "plugins/whiteboard-brainstorm/",
     "server/",
     "skills/",
     "scripts/",
@@ -36,9 +41,11 @@
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:packaging": "node --test tests/packaging.test.js",
     "test:integration": "node --test tests/integration/*.test.js",
     "test:e2e": "playwright test tests/e2e",
-    "test:all": "npm run test && npm run test:integration && npm run test:e2e"
+    "test:all": "npm run test && npm run test:integration && npm run test:e2e",
+    "sync:codex-plugin": "node scripts/sync-codex-plugin.js"
   },
   "dependencies": {
     "chokidar": "3.6.0",

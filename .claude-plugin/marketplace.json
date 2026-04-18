@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "whiteboard-brainstorm",
+  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas for Claude Code and Codex.",
+  "owner": {
+    "name": "khpind-personal",
+    "url": "https://github.com/khpind-personal"
+  },
+  "plugins": [
+    {
+      "name": "whiteboard-brainstorm",
+      "description": "Start a shared whiteboard brainstorming session and respond on the same Excalidraw canvas.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "whiteboard-brainstorm",
+  "version": "1.0.0-rc.6",
+  "description": "Bidirectional whiteboard brainstorming on an Excalidraw canvas for Claude Code and Codex.",
+  "skills": ["skills/whiteboard-brainstorm"],
+  "bin": { "wbb": "bin/wbb.js" },
+  "homepage": "https://github.com/khpind-personal/whiteboard-brainstorm"
+}

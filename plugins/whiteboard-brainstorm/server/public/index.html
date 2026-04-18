@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Whiteboard Brainstorm</title>
+  <style>
+    html, body, #root { height: 100%; margin: 0; padding: 0; background: #fff; }
+    .ping-btn {
+      position: fixed; right: 16px; bottom: 16px; z-index: 10;
+      background: #FFEB9C; color: #1e1e1e; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; padding: 10px 16px; font: 600 14px/1 system-ui;
+      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .ping-btn:hover { filter: brightness(0.96); }
+    .ping-btn[disabled] { cursor: progress; opacity: 0.9; }
+    .ping-hint {
+      font: 500 11px/1 system-ui;
+      opacity: 0.55;
+      border-left: 1px solid rgba(30, 30, 30, 0.25);
+      padding-left: 8px;
+      margin-left: 2px;
+    }
+    .ping-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #1e1e1e; display: inline-block;
+      opacity: 0.25;
+      transition: opacity 120ms ease;
+    }
+    .ping-btn.thinking .ping-dot {
+      opacity: 1;
+      animation: ping-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes ping-pulse {
+      0%, 100% { transform: scale(0.6); opacity: 0.35; }
+      50%      { transform: scale(1.15); opacity: 1;    }
+    }
+    /* Cursor-trail dot shown at the AI drop zone during thinking. */
+    .cursor-trail {
+      position: fixed; pointer-events: none; z-index: 9;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #1e1e1e; opacity: 0;
+      box-shadow: 0 0 0 6px rgba(30, 30, 30, 0.15);
+      transition: opacity 180ms ease, left 200ms ease, top 200ms ease;
+    }
+    .cursor-trail.active {
+      opacity: 0.85;
+      animation: ping-pulse 1.2s ease-in-out infinite;
+    }
+    .picker-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    .picker-modal {
+      background: #fff; padding: 24px; border-radius: 8px;
+      max-width: 520px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .picker-modal h2 { margin: 0 0 16px; font: 600 20px/1 system-ui; }
+    .picker-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+    }
+    .picker-card {
+      background: #FFEB9C; color: #1e1e1e; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; padding: 16px; font: 500 14px/1.3 system-ui;
+      cursor: pointer; text-align: left;
+    }
+    .picker-card:hover { filter: brightness(0.96); }
+    .scrubber {
+      position: fixed; top: 60px; right: 16px;
+      z-index: 10; display: flex; gap: 6px; align-items: center;
+      background: rgba(255,255,255,0.92); border: 1.5px solid #1e1e1e;
+      border-radius: 999px; padding: 4px 8px;
+      font: 500 12px/1 system-ui;
+      max-width: calc(100vw - 32px); overflow-x: auto;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    }
+    .scrubber-pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 28px; height: 22px; padding: 0 8px;
+      border: 1px solid #1e1e1e; border-radius: 999px;
+      background: #fff; color: #1e1e1e; cursor: pointer;
+    }
+    .scrubber-pill:hover { background: #f5f5f5; }
+    .scrubber-pill.live { background: #D4F5D4; font-weight: 700; }
+    .scrubber-pill.active { background: #FFEB9C; font-weight: 700; }
+    .scrubber-label { font-weight: 600; padding: 0 4px; opacity: 0.7; }
+    .thumb-popover {
+      position: fixed; z-index: 12; display: none;
+      padding: 4px; background: #fff; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .thumb-popover.visible { display: block; }
+    .thumb-popover img { display: block; width: 320px; height: auto; border-radius: 3px; }
+    .thumb-popover .thumb-loading {
+      width: 320px; height: 180px; display: flex;
+      align-items: center; justify-content: center;
+      font: 500 12px/1 system-ui; color: #666;
+    }
+    .tidy-menu {
+      position: fixed; z-index: 12; top: 100px; right: 16px;
+      background: #fff; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; padding: 10px 12px;
+      font: 500 12px/1.2 system-ui;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .tidy-menu .row { display: flex; gap: 6px; align-items: center; }
+    .tidy-menu label { opacity: 0.7; font-weight: 600; width: 46px; }
+    .tidy-menu button {
+      background: #fff; border: 1px solid #1e1e1e; border-radius: 999px;
+      padding: 3px 10px; cursor: pointer; font: inherit; color: #1e1e1e;
+    }
+    .tidy-menu button.on { background: #D4F5D4; font-weight: 700; }
+    .tidy-menu .apply {
+      background: #FFEB9C; font-weight: 700; border-radius: 4px;
+      padding: 6px 10px;
+    }
+    .preview-banner {
+      position: fixed; top: 98px; right: 16px;
+      z-index: 11; background: #FFEB9C; border: 1.5px solid #1e1e1e;
+      border-radius: 6px; padding: 6px 12px; font: 500 12px/1 system-ui;
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .preview-banner button {
+      background: #1e1e1e; color: #fff; border: none; border-radius: 4px;
+      padding: 4px 8px; font: 600 11px/1 system-ui; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <button id="ping" class="ping-btn" aria-label="Ping the AI" title="Ping the AI (Cmd/Ctrl+Enter)">
+    <span class="ping-dot" aria-hidden="true"></span>
+    <span class="ping-label">@ping</span>
+    <span class="ping-hint" aria-hidden="true">⌘↵</span>
+  </button>
+  <div id="cursor-trail" class="cursor-trail" aria-hidden="true"></div>
+  <div id="thumb-popover" class="thumb-popover" aria-hidden="true"></div>
+  <script src="vendor/react.development.js"></script>
+  <script src="vendor/react-dom.development.js"></script>
+  <script src="vendor/excalidraw.development.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
