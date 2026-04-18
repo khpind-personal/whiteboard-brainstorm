@@ -21,12 +21,14 @@ test('placeNear shifts down 20px on overlap, up to 10 tries', () => {
   assert.ok(pt.y > 160 + 80 || pt.x !== 220);
 });
 
-test('placeNear falls back to nextGridSlot after 10 collisions', () => {
+test('placeNear keeps shifting down in the same column when blocked', () => {
   const target = bbox(100, 100, 80, 40);
-  const blockers = Array.from({ length: 11 }, (_, i) =>
-    bbox(220, 140 + i * 20, 400, 80));
+  // Two tall blockers at the target's anchor column; placement should land
+  // BELOW them rather than flipping to a distant grid slot.
+  const blockers = [bbox(220, 140, 400, 200), bbox(220, 360, 400, 200)];
   const pt = placeNear(target, blockers);
-  assert.ok(pt.fallback === true);
+  assert.equal(pt.x, 220);
+  assert.ok(pt.y >= 560, `expected y below both blockers, got ${pt.y}`);
 });
 
 test('nextGridSlot returns a slot not overlapping any existing bbox', () => {
@@ -66,10 +68,10 @@ test('computeDropZone anchors at right edge even for far-out elements', () => {
   assert.equal(z.x, 10100);
 });
 
-test('placeNear returns fallback when candidate x exceeds MAX_X', () => {
-  // Anchor far right — every try stays beyond MAX_X so we should fall through.
+test('placeNear returns the anchored column x even for far-right targets', () => {
+  // No clamp: the AI drop zone follows user content to wherever it landed.
+  // Extreme right targets are now tolerated; the column stays stable.
   const target = { x: 5000, y: 0, width: 100, height: 100 };
   const pt = placeNear(target, []);
-  assert.ok(pt.fallback === true);
-  assert.ok(pt.x < 2400);
+  assert.equal(pt.x, 5140);
 });

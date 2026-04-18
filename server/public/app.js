@@ -38,7 +38,17 @@ function App() {
   async function refreshVersions() {
     try {
       const res = await fetch('/versions');
-      if (res.ok) setVersions(await res.json());
+      if (res.ok) {
+        const list = await res.json();
+        setVersions(list);
+        // Prefetch thumbnails so first hover doesn't race with Playwright.
+        // Fire-and-forget; cached responses come back fast, new ones render
+        // in the background and are ready before the user hovers.
+        for (const v of list) {
+          const pre = new Image();
+          pre.src = '/versions/' + v.n + '/thumb';
+        }
+      }
     } catch (_) { /* ignore */ }
   }
 
@@ -439,6 +449,8 @@ function App() {
     }
     const pop = document.getElementById('thumb-popover');
     if (!pop || !anchorEl) return;
+    const gen = (pop.__gen || 0) + 1;
+    pop.__gen = gen;
     const rect = anchorEl.getBoundingClientRect();
     pop.style.left = Math.max(8, rect.right - 320) + 'px';
     pop.style.top  = (rect.bottom + 6) + 'px';
@@ -447,9 +459,12 @@ function App() {
     const url = '/versions/' + n + '/thumb';
     const img = new Image();
     img.onload = () => {
+      // Ignore late completions from prior hovers.
+      if (pop.__gen !== gen) return;
       if (pop.classList.contains('visible')) replaceChildren(pop, img);
     };
     img.onerror = () => {
+      if (pop.__gen !== gen) return;
       if (pop.classList.contains('visible')) replaceChildren(pop, thumbEmptyNode('no preview'));
     };
     img.src = url;

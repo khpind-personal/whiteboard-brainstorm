@@ -209,7 +209,7 @@ async function main() {
   fs.mkdirSync(thumbDir, { recursive: true });
   // Sweep archived: mark every element with customData.archived=true as
   // isDeleted. Writes a new version so the user can revert via the scrubber.
-  app.post('/sweep-archive', (req, res) => {
+  app.post('/sweep-archive', async (req, res) => {
     try {
       const sceneFile = path.join(contentDir, 'latest.excalidraw.json');
       if (!fs.existsSync(sceneFile)) return res.status(404).json({ error: 'no scene' });
@@ -223,14 +223,10 @@ async function main() {
         return el;
       });
       if (swept === 0) return res.json({ swept: 0, turn: null });
-      // Find next version number.
-      const ns = fs.readdirSync(contentDir)
-        .map(f => (f.match(/^board-v(\d+)\.excalidraw\.json$/) || [])[1])
-        .filter(Boolean).map(Number);
-      const turn = (ns.length > 0 ? Math.max(...ns) : 0) + 1;
       const out = { ...scene, elements: newElements };
-      fs.writeFileSync(path.join(contentDir, `board-v${turn}.excalidraw.json`),
-                       JSON.stringify(out, null, 2));
+      const { allocateTurn } = await import('../lib/arrange.js');
+      const { turn, path: versionPath } = allocateTurn(contentDir);
+      fs.writeFileSync(versionPath, JSON.stringify(out, null, 2));
       fs.writeFileSync(sceneFile, JSON.stringify(out, null, 2));
       broadcast('refresh', { path: 'latest.excalidraw.json', source: 'sweep-archive' });
       res.json({ swept, turn });
