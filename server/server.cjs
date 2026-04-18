@@ -63,20 +63,29 @@ async function main() {
   // reload. Fill in reasonable defaults based on text content so the element
   // has a valid bbox on disk.
   function sanitizeScene(scene) {
-    if (!scene || !Array.isArray(scene.elements)) return scene;
-    for (const el of scene.elements) {
-      if (el.type !== 'text') continue;
-      if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
-        const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
-        const lineHeight = Math.round(fontSize * 1.4);
-        const lines = typeof el.text === 'string'
-          ? Math.max(1, el.text.split('\n').length)
-          : 1;
-        el.height = lines * lineHeight;
+    if (!scene) return scene;
+    if (Array.isArray(scene.elements)) {
+      for (const el of scene.elements) {
+        if (el.type !== 'text') continue;
+        if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
+          const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
+          const lineHeight = Math.round(fontSize * 1.4);
+          const lines = typeof el.text === 'string'
+            ? Math.max(1, el.text.split('\n').length)
+            : 1;
+          el.height = lines * lineHeight;
+        }
+        if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
+          el.width = 200;
+        }
       }
-      if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
-        el.width = 200;
-      }
+    }
+    // Excalidraw serializes appState.collaborators as `{}` (empty object).
+    // Reloading that scene crashes UserList.tsx with
+    // "collaborators.forEach is not a function" because Excalidraw expects
+    // a Map. Strip the key so the client recreates a proper Map on load.
+    if (scene.appState && 'collaborators' in scene.appState) {
+      delete scene.appState.collaborators;
     }
     return scene;
   }

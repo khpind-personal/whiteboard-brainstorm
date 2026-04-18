@@ -69,7 +69,7 @@ function App() {
             viewBackgroundColor:
               (scene.appState && scene.appState.viewBackgroundColor) ||
               currentApp.viewBackgroundColor,
-            collaborators: [],
+            collaborators: new Map(),
           },
         });
         // updateScene doesn't always re-measure free text on load — force a
@@ -352,6 +352,9 @@ function App() {
     const res = await fetch('/versions/' + n);
     if (!res.ok) return;
     const scene = normalizeScene(await res.json());
+    if (window.ExcalidrawLib && scene && Array.isArray(scene.elements)) {
+      scene.elements = window.ExcalidrawLib.restoreElements(scene.elements, null);
+    }
     if (apiRef.current) {
       const currentApp = apiRef.current.getAppState();
       apiRef.current.updateScene({
@@ -360,7 +363,7 @@ function App() {
           scrollX: currentApp.scrollX, scrollY: currentApp.scrollY,
           zoom: currentApp.zoom,
           viewBackgroundColor: (scene.appState && scene.appState.viewBackgroundColor) || '#ffffff',
-          collaborators: [],
+          collaborators: new Map(),
           viewModeEnabled: true,
         },
       });
@@ -378,7 +381,7 @@ function App() {
           scrollX: currentApp.scrollX, scrollY: currentApp.scrollY,
           zoom: currentApp.zoom,
           viewBackgroundColor: (scene.appState && scene.appState.viewBackgroundColor) || '#ffffff',
-          collaborators: [],
+          collaborators: new Map(),
           viewModeEnabled: false,
         },
       });
@@ -459,6 +462,21 @@ function App() {
     }, 120);
   }
 
+  // Track presence of archived elements so the Sweep button can conditionally
+  // render. Updated on every scene refresh event. MUST be declared before
+  // the early return below — conditional hooks blow up React's hook order.
+  useEffect(() => {
+    function recompute() {
+      if (!apiRef.current) return;
+      const els = apiRef.current.getSceneElements();
+      setHasArchived(els.some(e =>
+        !e.isDeleted && e.customData && e.customData.archived));
+    }
+    recompute();
+    window.addEventListener('wbb-scene-refresh', recompute);
+    return () => window.removeEventListener('wbb-scene-refresh', recompute);
+  }, [initialData]);
+
   if (!initialData) return createElement('div', { style: { padding: 20 } }, 'Loading\u2026');
 
   async function applyTidy() {
@@ -477,20 +495,6 @@ function App() {
   async function sweepArchive() {
     await fetch('/sweep-archive', { method: 'POST' });
   }
-
-  // Track presence of archived elements so the Sweep button can conditionally
-  // render. Updated on every scene refresh event.
-  useEffect(() => {
-    function recompute() {
-      if (!apiRef.current) return;
-      const els = apiRef.current.getSceneElements();
-      setHasArchived(els.some(e =>
-        !e.isDeleted && e.customData && e.customData.archived));
-    }
-    recompute();
-    window.addEventListener('wbb-scene-refresh', recompute);
-    return () => window.removeEventListener('wbb-scene-refresh', recompute);
-  }, [initialData]);
 
   const scrubberChildren = [
     createElement('span', { className: 'scrubber-label', key: 'lbl' }, 'History:'),
@@ -592,20 +596,33 @@ function flashPingSent(btn) {
 // (and occasionally width: null); reloading that scene renders the text
 // invisible. Fill in sane defaults so rendering works before Excalidraw
 // gets a chance to re-measure.
+// Also rehydrate appState.collaborators as a Map — Excalidraw's internals
+// call collaborators.forEach(); a plain object `{}` (which is what JSON
+// serialization produces) crashes UserList with
+// "collaborators.forEach is not a function".
 function normalizeScene(scene) {
-  if (!scene || !Array.isArray(scene.elements)) return scene;
-  for (const el of scene.elements) {
-    if (el.type !== 'text') continue;
-    if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
-      const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
-      const lineHeight = Math.round(fontSize * 1.4);
-      const lines = typeof el.text === 'string'
-        ? Math.max(1, el.text.split('\n').length)
-        : 1;
-      el.height = lines * lineHeight;
+  if (!scene) return scene;
+  if (Array.isArray(scene.elements)) {
+    for (const el of scene.elements) {
+      if (el.type !== 'text') continue;
+      if (el.height == null || Number.isNaN(el.height) || el.height <= 0) {
+        const fontSize = typeof el.fontSize === 'number' ? el.fontSize : 16;
+        const lineHeight = Math.round(fontSize * 1.4);
+        const lines = typeof el.text === 'string'
+          ? Math.max(1, el.text.split('\n').length)
+          : 1;
+        el.height = lines * lineHeight;
+      }
+      if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
+        el.width = 200;
+      }
     }
-    if (el.width == null || Number.isNaN(el.width) || el.width <= 0) {
-      el.width = 200;
+  }
+  if (scene.appState && scene.appState.collaborators !== undefined) {
+    const c = scene.appState.collaborators;
+    if (!(c instanceof Map)) {
+      // Strip — Excalidraw will initialize its own internal Map.
+      delete scene.appState.collaborators;
     }
   }
   return scene;
@@ -662,7 +679,15 @@ async function fetchLatest() {
   try {
     const res = await fetch('/content/latest.excalidraw.json', { cache: 'no-store' });
     if (!res.ok) return { elements: [], appState: { viewBackgroundColor: '#ffffff' }, files: {} };
-    return normalizeScene(await res.json());
+    const scene = normalizeScene(await res.json());
+    // Excalidraw's restoreElements normalizes raw element JSON so that
+    // free-floating text actually renders. Skipping this step produces
+    // invisible text on AI-generated stickies even when the data looks
+    // correct by inspection.
+    if (window.ExcalidrawLib && scene && Array.isArray(scene.elements)) {
+      scene.elements = window.ExcalidrawLib.restoreElements(scene.elements, null);
+    }
+    return scene;
   } catch (_) { return null; }
 }
 

@@ -52,7 +52,7 @@ test('buildSticky wraps long single-line text into multiple lines', () => {
   const lines = text.text.split('\n');
   assert.ok(lines.length >= 2, `expected wrap, got ${lines.length} lines`);
   for (const ln of lines) {
-    assert.ok(ln.length <= 42 + 10, `line too long: ${ln.length} chars`);
+    assert.ok(ln.length <= 32 + 10, `line too long: ${ln.length} chars`);
   }
   // Rectangle height must grow to fit all wrapped lines.
   assert.ok(rect.height >= lines.length * 20);
