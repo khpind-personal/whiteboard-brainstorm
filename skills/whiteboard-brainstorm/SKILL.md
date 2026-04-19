@@ -55,11 +55,31 @@ coupling.
    ```
    Prints JSON: `{slug, sessionDir, boardPath, notePath, root}`.
 
-2. Start the server on the session dir:
+2. Start the server on the session dir.
+
+   In Claude Code, the background launcher is usually fine:
    ```
    <plugin>/server/start-board-server.sh <sessionDir>
    ```
-   Prints JSON with `url`. Share the URL with the user along with:
+
+   In Codex, prefer a persistent foreground command so the command runner
+   does not reap the server after the launch command returns:
+   ```
+   <plugin>/server/start-board-server.sh <sessionDir> --foreground
+   ```
+   Keep that foreground command session open. In a second command, read
+   `<sessionDir>/.state/server-info` to get the URL.
+
+   Before sharing any URL, verify it is actually reachable:
+   ```
+   curl -sf <url>/health
+   ```
+   If health fails, do not share the URL. Start the server with
+   `--foreground`, keep that command session open, then read `server-info`
+   again. A stale `server-info` with a reaped process causes browser blank /
+   refused-load symptoms.
+
+   Share the URL with the user along with:
 
    > "Canvas live at <url>?mode=<mode>. Draw freely. Tag text with
    > @idea / @problem / @q. Click the @ping button (or write `@ping`
@@ -69,8 +89,11 @@ coupling.
 
 ## Turn loop (each user turn)
 
-1. **Check server alive.** If `<sessionDir>/.state/server-info` is missing
-   or `<sessionDir>/.state/server-stopped` exists, restart the server.
+1. **Check server alive.** If `<sessionDir>/.state/server-info` is missing,
+   `<sessionDir>/.state/server-stopped` exists, or `curl -sf <url>/health`
+   fails, restart the server. In Codex, restart with
+   `<plugin>/server/start-board-server.sh <sessionDir> --foreground` and keep
+   that command session open.
 2. **Atomically read + clear events:** copy the file to a tmp location
    FIRST, then truncate. Guarantees pings that arrive during the turn
    are not lost.

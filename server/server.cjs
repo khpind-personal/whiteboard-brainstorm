@@ -132,7 +132,7 @@ async function main() {
     if (Date.now() - lastSelfWrite < SELF_WRITE_WINDOW_MS) return;
     broadcast('refresh', { path: p });
   }
-  chokidar.watch(contentDir, { ignoreInitial: true, depth: 0 })
+  const watcher = chokidar.watch(contentDir, { ignoreInitial: true, depth: 0 })
     .on('add',    maybeBroadcastRefresh)
     .on('change', maybeBroadcastRefresh);
 
@@ -320,24 +320,35 @@ async function main() {
   });
 
   const port = await sweepPort();
-  const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };
-  fs.writeFileSync(path.join(stateDir, 'server-info'), JSON.stringify(info, null, 2));
-
-  const server = app.listen(port, '127.0.0.1');
+  const server = app.listen(port, '127.0.0.1', () => {
+    const info = { port, host: '127.0.0.1', url: `http://127.0.0.1:${port}`, pid: process.pid };
+    fs.writeFileSync(path.join(stateDir, 'server-info'), JSON.stringify(info, null, 2));
+    fs.writeFileSync(path.join(stateDir, 'server.pid'), String(process.pid));
+  });
 
   const idleMs = (Number(idleSec) || 1800) * 1000;
   let lastActivity = Date.now();
   app.use((req, res, next) => { lastActivity = Date.now(); next(); });
+  let shuttingDown = false;
+  function shutdown(reason) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    fs.writeFileSync(path.join(stateDir, 'server-stopped'), `${reason}\n`);
+    for (const client of sseClients) {
+      try { client.end(); } catch (_) { /* best effort */ }
+    }
+    watcher.close().catch(() => {});
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 1000).unref();
+  }
   setInterval(() => {
     if (Date.now() - lastActivity > idleMs) {
-      fs.writeFileSync(path.join(stateDir, 'server-stopped'), 'idle-exit\n');
-      server.close(() => process.exit(0));
+      shutdown('idle-exit');
     }
   }, 5000);
 
   process.on('SIGTERM', () => {
-    fs.writeFileSync(path.join(stateDir, 'server-stopped'), 'sigterm\n');
-    server.close(() => process.exit(0));
+    shutdown('sigterm');
   });
   // Unhandled errors used to leave the poll-loop hanging for 9 minutes with
   // no diagnostic. Mark the server as stopped so SKILL.md's blocking wait
