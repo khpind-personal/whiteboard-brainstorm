@@ -9,7 +9,7 @@ jobs:
         with: { node-version: '20' }
       - run: npm ci
       - run: ./scripts/vendor-excalidraw.sh
+      - run: npx playwright install --with-deps chromium
       - run: npm test
       - run: npm run test:integration
-      - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e -- --project=chromium
