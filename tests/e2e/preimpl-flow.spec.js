@@ -18,7 +18,7 @@ test('preimpl flow: load template, render, post state, simulate ping', async ({ 
     await page.locator('#ping').click();
     await page.waitForTimeout(300);
     const fs = await import('node:fs');
-    const evt = fs.readFileSync(`${ctx.sessionDir}/state/events.jsonl`, 'utf8').trim();
+    const evt = fs.readFileSync(`${ctx.sessionDir}/.state/events.jsonl`, 'utf8').trim();
     expect(evt).toContain('"type":"ping"');
   } finally { stopSession(ctx); }
 });

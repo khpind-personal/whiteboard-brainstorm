@@ -14,7 +14,7 @@ test('resume: kill server, re-start on same session, scene intact', async ({ pag
       id: 'marker', type: 'rectangle', x: 10, y: 10, width: 30, height: 30,
       seed: 1, versionNonce: 1, groupIds: [],
     }], appState: { viewBackgroundColor: '#ffffff' }, files: {} };
-    writeFileSync(join(ctx.sessionDir, 'content/latest.excalidraw.json'), JSON.stringify(marker));
+    writeFileSync(join(ctx.sessionDir, 'latest.excalidraw.json'), JSON.stringify(marker));
 
     const info2 = await restartServer(ctx);
     const r = await fetch(info2.url + '/content/latest.excalidraw.json');

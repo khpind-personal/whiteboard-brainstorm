@@ -34,7 +34,7 @@ test('drawn @ping text auto-fires a ping event with source=drawn-shape', async (
       api.updateScene({ elements: [...current, newEl] });
     });
     await page.waitForTimeout(1000);
-    const events = readFileSync(join(ctx.sessionDir, 'state/events.jsonl'), 'utf8').trim();
+    const events = readFileSync(join(ctx.sessionDir, '.state/events.jsonl'), 'utf8').trim();
     expect(events).toContain('"source":"drawn-shape"');
   } finally { stopSession(ctx); }
 });

@@ -30,7 +30,7 @@ test('concurrent edit: user adds element while AI turn merges — both survive',
 
     userScene.elements.push({ id: 'user-rect-2', type: 'rectangle', x: 100, y: 100, width: 40, height: 40,
                               seed: 2, versionNonce: 2, groupIds: [] });
-    const sceneFile = join(ctx.sessionDir, 'content/latest.excalidraw.json');
+    const sceneFile = join(ctx.sessionDir, 'latest.excalidraw.json');
     writeFileSync(sceneFile, JSON.stringify(userScene));
 
     const merged = JSON.parse(execFileSync('node', [CLI, 'merge', sceneFile, aiFile, '1'],
