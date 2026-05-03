@@ -49,7 +49,10 @@ export function stopSession(ctx) {
 }
 
 export async function restartServer(ctx) {
-  await new Promise(resolve => { ctx.proc.on('exit', resolve); ctx.proc.kill('SIGTERM'); });
+  // SIGKILL, not SIGTERM: SIGTERM triggers server.close() which waits for
+  // open SSE connections to drain. The browser tab from page.goto holds
+  // one open, so the old server would never exit and this would deadlock.
+  await new Promise(resolve => { ctx.proc.on('exit', resolve); ctx.proc.kill('SIGKILL'); });
   try { unlinkSync(join(ctx.sessionDir, '.state/server-info')); } catch (_) {}
   try { unlinkSync(join(ctx.sessionDir, '.state/server-stopped')); } catch (_) {}
   const proc = spawn('node', [
