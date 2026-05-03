@@ -1,8 +1,8 @@
 # whiteboard-brainstorm
 
-> Think visually on a shared Excalidraw canvas.
-> Draw, tag, and ping. The assistant responds with stickies, mind-nodes,
-> annotations, and summary panels on the same board.
+> Think visually on a shared Excalidraw canvas with Claude or Codex.
+> You draw, tag, and ping. The assistant responds with stickies,
+> mind-nodes, annotations, and summary panels on the same board.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-43853d.svg)](https://nodejs.org)
@@ -10,6 +10,17 @@
 [![Version](https://img.shields.io/badge/version-1.0.0--rc.6-blue.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/claude_code-plugin-8A2BE2.svg)](https://claude.com/claude-code)
 [![Codex](https://img.shields.io/badge/codex-plugin-0F172A.svg)](https://platform.openai.com/)
+
+![Whiteboard Brainstorm — circle a node, drop a question, ping, watch Claude branch the thread on the same canvas](docs/media/hero.gif)
+
+> 🎬 [Watch the mp4 (19s, no audio)](docs/media/hero.mp4)
+
+## How it works
+
+| Start with a brainstorm | Circle. Arrow. Ask. Ping. |
+|---|---|
+| ![Initial canvas with five branching ideas](docs/media/canvas-v0.png) | ![Same canvas after the assistant branches a sub-tree off the circled node](docs/media/canvas-v1-with-ai.png) |
+| Some thoughts already live on the board. | The assistant branches the thread next to whatever you circled — without disturbing the rest of the canvas. |
 
 ## Install
 
@@ -38,11 +49,11 @@ Agent | Explicit entrypoint
 Claude Code | `/whiteboard-brainstorm <mode> [topic]`
 Codex | `whiteboard-brainstorm <mode> [topic]`
 
-For the smoothest session, run Claude Code with auto-mode enabled or run
-Codex with `--full-auto`. The whiteboard loop works best when the assistant
-can continuously run the local shell commands that watch for pings, read the
-canvas state, merge AI elements, and write the next board version without
-asking for command approval on every turn.
+For the smoothest session, run Claude Code with auto-mode enabled or
+Codex with `--full-auto`. The whiteboard loop works best when the
+assistant can continuously run the local shell commands that watch
+for pings, read the canvas, merge AI elements, and write the next
+board version without asking for command approval on every turn.
 
 Modes:
 
@@ -52,10 +63,11 @@ Modes:
 
 ## Why
 
-Brainstorming in a chat UI forces ideas through a 1D stream. Whiteboards are
-2D: position is meaning; adjacency is reasoning. This plugin gives the
-assistant an Excalidraw canvas to write on, not just talk about, with
-keyboard-speed triggers, auto-layout, version scrub, and transcript export.
+Brainstorming in a chat UI forces ideas through a 1D stream.
+Whiteboards are 2D: position is meaning, adjacency is reasoning.
+This plugin gives the assistant an Excalidraw canvas to write on,
+not just talk about, with keyboard-speed triggers, auto-layout,
+version scrub, and transcript export.
 
 ## The turn loop
 
@@ -65,9 +77,9 @@ keyboard-speed triggers, auto-layout, version scrub, and transcript export.
 3. **The assistant reads the scene,** parses your tags, and composes a
    response spec.
 4. **Canvas updates automatically.** New stickies, panels, and mind-nodes
-   appear via SSE. The session can stay alive through a blocking shell wait.
-5. **You scrub history, reshape, or export.** Every turn is a version pill in
-   the scrubber. `Tidy` reflows elements. `Sweep` removes dimmed archives.
+   appear via SSE. The session stays alive through a blocking shell wait.
+5. **You scrub history, reshape, or export.** Every turn is a version pill
+   in the scrubber. `Tidy` reflows elements. `Sweep` removes dimmed archives.
 
 ## Features
 
